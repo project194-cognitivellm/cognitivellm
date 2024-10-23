@@ -8,7 +8,7 @@ env_type = config['env']['type'] # 'AlfredTWEnv' or 'AlfredThorEnv' or 'AlfredHy
 
 # setup environment
 env = getattr(environment, env_type)(config, train_eval='train')
-env = env.init_env(batch_size=1)
+env = env.init_env(batch_size=3)
 
 # interact
 obs, info = env.reset()
@@ -26,10 +26,11 @@ while True:
     admissible_commands = list(info['admissible_commands']) # note: BUTLER generates commands word-by-word without using admissible_commands
     random_actions = [np.random.choice(admissible_commands[0])]
     
+    
     # step
     obs, scores, dones, infos = env.step(random_actions)
     print("Action: {}, Scores: {}, Obs: {}".format(random_actions[0], scores[0], obs[0]))
     
     count += 1
-    if count > 5:
+    if count > 10:
         break

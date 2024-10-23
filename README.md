@@ -24,4 +24,4 @@
 
 ## Description
 ### ALFWorld
-See in alfworld_test.py
+ALFWorld is a gym environment. The initial observation includes the environment state and **Task Description**. Following observations only include environment states. We can let AutoGen call the *env.step()* function and get the observation. See details in alfworld_test.py.
