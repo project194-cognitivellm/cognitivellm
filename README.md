@@ -9,6 +9,20 @@
 
 ## Installation
 
+Be sure to use WSL in Windows to install the `jericho` package. Ideally, if in Windows, should use WSL to install conda, if not done so already. If using windows, please be sure to run the following commands.
+
+
+```sh
+sudo apt-get update
+sudo apt-get install build-essential
+sudo apt-get install python3-dev
+sudo apt-get install python3-pip
+sudo apt-get install zlib1g-dev
+sudo apt-get install libssl-dev libffi-dev
+pip3 install cython
+```
+
+
 1. Install ALFWorld. Specific your storage_path
     ```sh
     conda create -n cogllm python=3.9
