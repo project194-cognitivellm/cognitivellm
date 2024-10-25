@@ -10,17 +10,19 @@ def get_best_candidate(reference_sentence, candidate_sentences):
     best_score = 0.0
     best_candidate = ""
     for candidate_sentence in candidate_sentences:
-        candidate = candidate_sentence.split()
-        bleu_score = sentence_bleu(reference, candidate)
-        if bleu_score > best_score:
-            best_score = bleu_score
-            best_candidate = candidate_sentence
+        if isinstance(candidate_sentence, str):
+            candidate = candidate_sentence.split()
+            bleu_score = sentence_bleu(reference, candidate)
+            if bleu_score > best_score:
+                best_score = bleu_score
+                best_candidate = candidate_sentence
     return best_candidate
 
 def execute_action(suggested_action: str) -> str:
     global info
+    action_text = suggested_action.strip()
     admissible_commands = list(info['admissible_commands'])
-    action = get_best_candidate(suggested_action, admissible_commands)
+    action = get_best_candidate(action_text, admissible_commands)
     obs, scores, dones, info = env.step([action])
     return obs[0]
 
@@ -65,7 +67,7 @@ if __name__ == '__main__':
     )
 
     environment_proxy = ConversableAgent(
-        name="Environment Proxy",
+        name="Environment_Proxy",
         llm_config=False,
         human_input_mode="NEVER"
     )
