@@ -25,7 +25,7 @@ pip3 install cython
 
 Then, follow the ubuntu installation instructions.
 ### Ubuntu
-1. Install ALFWorld. Specific your storage_path
+1. Install ALFWorld and test run autogen
     ```sh
     conda create -n cogllm python=3.9
     conda activate cogllm
@@ -33,9 +33,8 @@ Then, follow the ubuntu installation instructions.
     export ALFWORLD_DATA=<storage_path>
     alfworld-download
     alfworld-download --extra
-    python alfworld_test.py configs/base_config.yaml
+    python run_autogen configs/base_config.yaml
     ```
-2. AutoGen?
     
 
 ## Description
