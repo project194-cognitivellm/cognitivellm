@@ -36,8 +36,9 @@ def get_best_candidate(reference_sentence, candidate_sentences):
     return best_candidate
 
 def execute_action(suggested_action: str) -> str:
+    global info
     admissible_commands = list(info['admissible_commands'])
-    obs, scores, dones, infos = env.step(get_best_candidate(suggested_action, admissible_commands))
+    obs, scores, dones, info = env.step(get_best_candidate(suggested_action, admissible_commands))
     return obs
 
 llm_config = {"config_list": [{"model": "gpt-4o-mini", "api_key": os.environ.get("OPENAI_API_KEY")}]}
