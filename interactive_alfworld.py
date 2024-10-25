@@ -18,10 +18,10 @@ obs, info = env.reset()
 
 action = ''
 while True:
-    print(obs)
-    print(info)
+    print(obs[0])
+    print(f"Admissible Commands: {info['admissible_commands'][0]}")
     action = input("Enter action: ")
     if action == 'exit':
         break
     print(f"Action: {action}")
-    obs, scores, dones, info = env.step(action)
+    obs, scores, dones, info = env.step([action])

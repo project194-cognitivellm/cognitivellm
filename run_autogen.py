@@ -22,7 +22,7 @@ print(f"Admissible Commands: {info['admissible_commands'][0]}")
 
 def get_best_candidate(reference_sentence, candidate_sentences):
     # Tokenize the reference sentence
-    print(f"Reference Sentence: {reference_sentence}")
+    # print(f"Reference Sentence: {reference_sentence}")
     reference = [reference_sentence.split()]
     best_score = 0.0
     best_candidate = ""
@@ -31,14 +31,14 @@ def get_best_candidate(reference_sentence, candidate_sentences):
     for candidate_sentence in candidate_sentences:
         candidate = candidate_sentence.split()
         bleu_score = sentence_bleu(reference, candidate)
-        print(f"Candidate Sentence: {candidate_sentence}, BLEU: {bleu_score}")
+        # print(f"Candidate Sentence: {candidate_sentence}, BLEU: {bleu_score}")
 
         # Update best score and best candidate if this candidate is better
         if bleu_score > best_score:
             best_score = bleu_score
             best_candidate = candidate_sentence
 
-    print(f"Best Candidate: {best_candidate}, BLEU: {best_score}")
+    # print(f"Best Candidate: {best_candidate}, BLEU: {best_score}")
     return best_candidate
 
 def execute_action(suggested_action: str) -> str:
@@ -46,8 +46,9 @@ def execute_action(suggested_action: str) -> str:
     assert len(list(info['admissible_commands'])) == 1
     admissible_commands = list(info['admissible_commands'][0])
     assert len(admissible_commands) > 0
-    obs, scores, dones, info = env.step(get_best_candidate(suggested_action, admissible_commands))
-    return obs
+    action = get_best_candidate(suggested_action, admissible_commands)
+    obs, scores, dones, info = env.step([action])
+    return obs[0]
 
 llm_config = {"config_list": [{"model": "gpt-4o-mini", "api_key": os.environ.get("OPENAI_API_KEY")}]}
 
@@ -120,7 +121,7 @@ group_chat = GroupChat(
     messages=[],
     allowed_or_disallowed_speaker_transitions=allowed_transitions,
     speaker_transitions_type="allowed",
-    max_round=6,
+    max_round=100,
     send_introductions=True
 )
 
