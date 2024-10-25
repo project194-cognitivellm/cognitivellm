@@ -61,7 +61,7 @@ assistant_agent = ConversableAgent(
                    "Your Output: THOUGHT [Now I find a bowl (1). I need to use the desklamp to look at the bowl. "
                    "I'll go to the desklamp now.] ACTION [go to desk 1]",
     llm_config=llm_config,
-    is_termination_msg=lambda msg: msg["content"] is not None and "Task Failed" in msg["content"],
+    is_termination_msg=lambda msg: msg["content"] is not None and "Task failed" in msg["content"],
     human_input_mode="NEVER"
 )
 
@@ -100,7 +100,7 @@ grounding_agent.description = ("provides general knowledge at the start of task 
                                "environment_proxy reports the same results three times in a row")
 
 group_chat = GroupChat(
-    agents=[assistant_agent, executor_agent, grounding_agent],
+    agents=[assistant_agent, executor_agent, grounding_agent, environment_proxy],
     allowed_or_disallowed_speaker_transitions=allowed_transitions,
     speaker_transitions_type="allowed",
     max_round=100,
