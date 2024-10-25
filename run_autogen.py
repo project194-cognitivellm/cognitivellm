@@ -13,9 +13,12 @@ env_type = config['env']['type']  # 'AlfredTWEnv' or 'AlfredThorEnv' or 'AlfredH
 # setup environment
 env = getattr(environment, env_type)(config, train_eval='train')
 env = env.init_env(batch_size=3)
+print("Initialized Environment")
 
 # interact
 obs, info = env.reset()
+
+print("Reset environment")
 
 def get_best_candidate(reference_sentence, candidate_sentences):
     # Tokenize the reference sentence
@@ -65,11 +68,15 @@ assistant_agent = ConversableAgent(
     human_input_mode="NEVER"
 )
 
+print("Initialized assistant agent")
+
 environment_proxy = ConversableAgent(
     name="Environment Proxy",
     llm_config=False,
     human_input_mode="NEVER"
 )
+
+print("Initialized environment proxy")
 
 executor_agent = ConversableAgent(
     name="Executor_Agent",
@@ -78,6 +85,8 @@ executor_agent = ConversableAgent(
     human_input_mode="NEVER"
 )
 
+print("Initialized executor agent")
+
 grounding_agent = ConversableAgent(
     name="Grounding_Agent",
     system_message="You provide general knowledge at the start of task when the chat begins and whenever the "
@@ -85,6 +94,8 @@ grounding_agent = ConversableAgent(
     llm_config=llm_config,
     human_input_mode="NEVER"
 )
+
+print("Initialized grounding agent")
 
 allowed_transitions = {
     assistant_agent: [executor_agent],
@@ -100,17 +111,22 @@ grounding_agent.description = ("provides general knowledge at the start of task 
                                "environment_proxy reports the same results three times in a row")
 
 group_chat = GroupChat(
-    agents=[assistant_agent, executor_agent, grounding_agent],
+    agents=[assistant_agent, executor_agent, grounding_agent, environment_proxy],
+    messages=[],
     allowed_or_disallowed_speaker_transitions=allowed_transitions,
     speaker_transitions_type="allowed",
     max_round=100,
     send_introductions=True
 )
 
+print("Initialized group chat")
+
 group_chat_manager = GroupChatManager(
     groupchat=group_chat,
     llm_config=llm_config,
 )
+
+print("Initialized group chat manager")
 
 register_function(
     execute_action,
@@ -120,11 +136,17 @@ register_function(
     description="Call this function to execute the suggested action"
 )
 
+print("Initialization complete; Starting Chat")
+
+if isinstance(obs, (list, tuple)):
+    initial_message_content = obs[0]
+else:
+    initial_message_content = obs
+
 chat_result = grounding_agent.initiate_chat(
         group_chat_manager,
-        message=obs,
-        summary_method="reflections_with_llm"
+        message={"role": "system", "content": initial_message_content},
+        summary_method="reflection_with_llm"
 )
 
-
-
+print("Finished Chat")
