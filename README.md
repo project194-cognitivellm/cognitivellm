@@ -35,7 +35,6 @@ Then, follow the ubuntu installation instructions.
     alfworld-download --extra
     python alfworld_test.py configs/base_config.yaml
     ```
-2. AutoGen?
     
 
 ## Description
