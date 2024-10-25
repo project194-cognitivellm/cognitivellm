@@ -29,7 +29,7 @@ Then, follow the ubuntu installation instructions.
     ```sh
     conda create -n cogllm python=3.9
     conda activate cogllm
-    pip install alfworld[full]
+    pip install 'alfworld[full]'
     export ALFWORLD_DATA=<storage_path>
     alfworld-download
     alfworld-download --extra
