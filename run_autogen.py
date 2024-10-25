@@ -12,16 +12,17 @@ env_type = config['env']['type']  # 'AlfredTWEnv' or 'AlfredThorEnv' or 'AlfredH
 
 # setup environment
 env = getattr(environment, env_type)(config, train_eval='train')
-env = env.init_env(batch_size=3)
+env = env.init_env(batch_size=1)
 print("Initialized Environment")
 
 # interact
 obs, info = env.reset()
-
 print("Reset environment")
+print(f"Admissible Commands: {info['admissible_commands'][0]}")
 
 def get_best_candidate(reference_sentence, candidate_sentences):
     # Tokenize the reference sentence
+    print(f"Reference Sentence: {reference_sentence}")
     reference = [reference_sentence.split()]
     best_score = 0.0
     best_candidate = ""
@@ -30,17 +31,21 @@ def get_best_candidate(reference_sentence, candidate_sentences):
     for candidate_sentence in candidate_sentences:
         candidate = candidate_sentence.split()
         bleu_score = sentence_bleu(reference, candidate)
+        print(f"Candidate Sentence: {candidate_sentence}, BLEU: {bleu_score}")
 
         # Update best score and best candidate if this candidate is better
         if bleu_score > best_score:
             best_score = bleu_score
             best_candidate = candidate_sentence
 
+    print(f"Best Candidate: {best_candidate}, BLEU: {best_score}")
     return best_candidate
 
 def execute_action(suggested_action: str) -> str:
     global info
-    admissible_commands = list(info['admissible_commands'])
+    assert len(list(info['admissible_commands'])) == 1
+    admissible_commands = list(info['admissible_commands'][0])
+    assert len(admissible_commands) > 0
     obs, scores, dones, info = env.step(get_best_candidate(suggested_action, admissible_commands))
     return obs
 
@@ -115,7 +120,7 @@ group_chat = GroupChat(
     messages=[],
     allowed_or_disallowed_speaker_transitions=allowed_transitions,
     speaker_transitions_type="allowed",
-    max_round=100,
+    max_round=6,
     send_introductions=True
 )
 
