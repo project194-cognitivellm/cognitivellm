@@ -35,8 +35,24 @@ Then, follow the ubuntu installation instructions.
     alfworld-download --extra
     python run_autogen configs/base_config.yaml
     ```
-    
+
+2. Install Autogen.
+   ```sh
+   pip install autogen-agentchat~=0.2
+   pip install nltk
+   pip install flaml[automl]
+   ```
 
 ## Description
 ### ALFWorld
-ALFWorld is a gym environment. The initial observation includes the environment state and **Task Description**. Following observations only include environment states. We can let AutoGen call the *env.step()* function and get the observation. See details in alfworld_test.py.
+ALFWorld is a gym environment. The initial observation includes the environment state and **Task Description**. Following observations only include environment states. We can let AutoGen call the *env.step()* function and get the observation.
+
+Scripts:
+1. `alfworld_random_agent.py`: Runs random agent on ALFWorld environment.
+2. `interactive_alfworld.py`: Interactive mode to run ALFWorld environment.
+
+### AutoGen
+We apply AutoGen to the ALFWorld environment, mimicking the conversation pattern and prompts from the original AutoGen paper.
+
+Scripts:
+1. `run_autogen.py`: Runs a single trajectory of an AutoGen agent on ALFWorld environment.

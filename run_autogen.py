@@ -12,13 +12,17 @@ env_type = config['env']['type']  # 'AlfredTWEnv' or 'AlfredThorEnv' or 'AlfredH
 
 # setup environment
 env = getattr(environment, env_type)(config, train_eval='train')
-env = env.init_env(batch_size=3)
+env = env.init_env(batch_size=1)
+print("Initialized Environment")
 
 # interact
 obs, info = env.reset()
+print("Reset environment")
+print(f"Admissible Commands: {info['admissible_commands'][0]}")
 
 def get_best_candidate(reference_sentence, candidate_sentences):
     # Tokenize the reference sentence
+    # print(f"Reference Sentence: {reference_sentence}")
     reference = [reference_sentence.split()]
     best_score = 0.0
     best_candidate = ""
@@ -27,19 +31,24 @@ def get_best_candidate(reference_sentence, candidate_sentences):
     for candidate_sentence in candidate_sentences:
         candidate = candidate_sentence.split()
         bleu_score = sentence_bleu(reference, candidate)
+        # print(f"Candidate Sentence: {candidate_sentence}, BLEU: {bleu_score}")
 
         # Update best score and best candidate if this candidate is better
         if bleu_score > best_score:
             best_score = bleu_score
             best_candidate = candidate_sentence
 
+    # print(f"Best Candidate: {best_candidate}, BLEU: {best_score}")
     return best_candidate
 
 def execute_action(suggested_action: str) -> str:
     global info
-    admissible_commands = list(info['admissible_commands'])
-    obs, scores, dones, info = env.step(get_best_candidate(suggested_action, admissible_commands))
-    return obs
+    assert len(list(info['admissible_commands'])) == 1
+    admissible_commands = list(info['admissible_commands'][0])
+    assert len(admissible_commands) > 0
+    action = get_best_candidate(suggested_action, admissible_commands)
+    obs, scores, dones, info = env.step([action])
+    return obs[0]
 
 llm_config = {"config_list": [{"model": "gpt-4o-mini", "api_key": os.environ.get("OPENAI_API_KEY")}]}
 
@@ -65,11 +74,15 @@ assistant_agent = ConversableAgent(
     human_input_mode="NEVER"
 )
 
+print("Initialized assistant agent")
+
 environment_proxy = ConversableAgent(
     name="Environment Proxy",
     llm_config=False,
     human_input_mode="NEVER"
 )
+
+print("Initialized environment proxy")
 
 executor_agent = ConversableAgent(
     name="Executor_Agent",
@@ -78,6 +91,8 @@ executor_agent = ConversableAgent(
     human_input_mode="NEVER"
 )
 
+print("Initialized executor agent")
+
 grounding_agent = ConversableAgent(
     name="Grounding_Agent",
     system_message="You provide general knowledge at the start of task when the chat begins and whenever the "
@@ -85,6 +100,8 @@ grounding_agent = ConversableAgent(
     llm_config=llm_config,
     human_input_mode="NEVER"
 )
+
+print("Initialized grounding agent")
 
 allowed_transitions = {
     assistant_agent: [executor_agent],
@@ -101,16 +118,21 @@ grounding_agent.description = ("provides general knowledge at the start of task 
 
 group_chat = GroupChat(
     agents=[assistant_agent, executor_agent, grounding_agent, environment_proxy],
+    messages=[],
     allowed_or_disallowed_speaker_transitions=allowed_transitions,
     speaker_transitions_type="allowed",
     max_round=100,
     send_introductions=True
 )
 
+print("Initialized group chat")
+
 group_chat_manager = GroupChatManager(
     groupchat=group_chat,
     llm_config=llm_config,
 )
+
+print("Initialized group chat manager")
 
 register_function(
     execute_action,
@@ -120,11 +142,17 @@ register_function(
     description="Call this function to execute the suggested action"
 )
 
+print("Initialization complete; Starting Chat")
+
+if isinstance(obs, (list, tuple)):
+    initial_message_content = obs[0]
+else:
+    initial_message_content = obs
+
 chat_result = grounding_agent.initiate_chat(
         group_chat_manager,
-        message=obs,
-        summary_method="reflections_with_llm"
+        message={"role": "system", "content": initial_message_content},
+        summary_method="reflection_with_llm"
 )
 
-
-
+print("Finished Chat")
