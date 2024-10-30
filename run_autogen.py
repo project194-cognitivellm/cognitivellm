@@ -121,7 +121,7 @@ group_chat = GroupChat(
     messages=[],
     allowed_or_disallowed_speaker_transitions=allowed_transitions,
     speaker_transitions_type="allowed",
-    max_round=100,
+    max_round=2,
     send_introductions=True
 )
 
