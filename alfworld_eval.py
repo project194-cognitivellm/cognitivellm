@@ -50,6 +50,8 @@ for eval_env_type in eval_envs:
                     # print(f"Action: {action}")
                     obs, scores, dones, info = eval_env.step([action])
                     print(f"Scores: {scores[0]}", f"Dones: {dones[0]}")
+                    
+                    # when a game is done, dones[0] is True and Scores[0] is 1
                     if dones[0]:
                         success = True
                         break

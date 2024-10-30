@@ -48,7 +48,7 @@ def execute_action(suggested_action: str) -> str:
     assert len(admissible_commands) > 0
     action = get_best_candidate(suggested_action, admissible_commands)
     obs, scores, dones, info = env.step([action])
-    return obs[0]
+    return obs[0], f"Scores: {scores[0]}, Dones: {dones[0]}"
 
 llm_config = {"config_list": [{"model": "gpt-4o-mini", "api_key": os.environ.get("OPENAI_API_KEY")}]}
 
@@ -121,7 +121,7 @@ group_chat = GroupChat(
     messages=[],
     allowed_or_disallowed_speaker_transitions=allowed_transitions,
     speaker_transitions_type="allowed",
-    max_round=2,
+    max_round=20,
     send_introductions=True
 )
 

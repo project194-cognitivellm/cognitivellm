@@ -56,3 +56,9 @@ We apply AutoGen to the ALFWorld environment, mimicking the conversation pattern
 
 Scripts:
 1. `run_autogen.py`: Runs a single trajectory of an AutoGen agent on ALFWorld environment.
+
+
+### Evaluation
+```sh
+python alfworld_eval.py configs/eval_config.yaml 
+```
