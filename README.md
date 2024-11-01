@@ -59,6 +59,13 @@ Scripts:
 
 
 ### Evaluation
+Evaluation script for ALFWorld. It is controlled by user.
 ```sh
 python alfworld_eval.py configs/eval_config.yaml 
 ```
+
+Evaluation script for AutoGen on ALFWorld.
+```sh
+python run_autogen.py configs/eval_config.yaml 
+```
+
