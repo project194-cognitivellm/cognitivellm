@@ -1,3 +1,5 @@
+# cognitive_agent.py
+
 import os
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 from nltk.translate.bleu_score import sentence_bleu
@@ -72,17 +74,27 @@ class CognitiveAutogenAgent:
             human_input_mode="NEVER"
         )
 
+        # Executor Agent
+        self.executor_agent = ConversableAgent(
+            name="Executor_Agent",
+            system_message="You execute the proposed action in the environment and return the observation.",
+            llm_config=self.llm_config,  # Ensure llm_config is set
+            human_input_mode="NEVER",
+            is_termination_msg=lambda msg: msg["content"] is not None and "SUCCESS" in msg["content"],
+        )
+
         # Environment Proxy
         self.environment_proxy = ConversableAgent(
             name="Environment_Proxy",
-            llm_config=False,
+            llm_config=False,  # This agent does not need an llm_config
             human_input_mode="NEVER",
         )
 
         # Allowed transitions between agents
         self.allowed_transitions = {
             self.planner_agent: [self.actor_agent],
-            self.actor_agent: [self.environment_proxy],
+            self.actor_agent: [self.executor_agent],
+            self.executor_agent: [self.environment_proxy],
             self.environment_proxy: [self.evaluator_agent],
             self.evaluator_agent: [self.planner_agent],
         }
@@ -91,13 +103,15 @@ class CognitiveAutogenAgent:
         self.planner_agent.description = "proposes plans to accomplish the task"
         self.actor_agent.description = "proposes actions to execute the current plan"
         self.evaluator_agent.description = "evaluates the progress of the plan based on observations"
-        self.environment_proxy.description = "executes actions and returns observations"
+        self.executor_agent.description = "executes actions and returns observations"
+        self.environment_proxy.description = "executes actions in the environment and returns observations"
 
         # Group Chat
         self.group_chat = GroupChat(
             agents=[
                 self.planner_agent,
                 self.actor_agent,
+                self.executor_agent,
                 self.evaluator_agent,
                 self.environment_proxy
             ],
@@ -124,11 +138,11 @@ class CognitiveAutogenAgent:
             self.obs, scores, dones, self.info = self.env.step([action])
             return self.obs[0], f"Admissible Commands: {admissible_commands}, Scores: {scores[0]}, Dones: {dones[0]}"
 
-        # Register the execute_action function
+        # Register the execute_action function with Executor_Agent
         register_function(
             execute_action,
-            caller=self.environment_proxy,
-            executor=self.environment_proxy,
+            caller=self.executor_agent,  # Executor_Agent has llm_config=True
+            executor=self.executor_agent,  # Executor_Agent handles execution
             name="execute_action",
             description="Execute the action in the environment and return the observation"
         )
@@ -138,7 +152,7 @@ class CognitiveAutogenAgent:
             self.plan_memory_database[plan] = evaluation
             return f"Plan memory updated for plan: '{plan}' with evaluation: '{evaluation}'"
 
-        # Register the update_plan_memory function
+        # Register the update_plan_memory function with Evaluator_Agent
         register_function(
             update_plan_memory,
             caller=self.evaluator_agent,
