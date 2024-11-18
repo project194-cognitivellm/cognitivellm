@@ -11,6 +11,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(
         description="Evaluate different Autogen Agents on the ALFWorld environment."
     )
+    parser.add_argument("config_file", help="path to config file")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
         "--baseline",
