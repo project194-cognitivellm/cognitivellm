@@ -25,3 +25,6 @@ while True:
         break
     print(f"Action: {action}")
     obs, scores, dones, info = env.step([action])
+    print("scores: ", scores)
+    print("dones: ", dones)
+    print("info: ", info)
