@@ -3,6 +3,25 @@ from autogen import ConversableAgent, register_function, GroupChat, GroupChatMan
 from nltk.translate.bleu_score import sentence_bleu
 
 
+def get_best_candidate(reference_sentence, candidate_sentences):
+    # Tokenize the reference sentence
+    reference = [reference_sentence.split()]
+    best_score = 0.0
+    best_candidate = ""
+
+    # Iterate through each candidate sentence and calculate the BLEU score
+    for candidate_sentence in candidate_sentences:
+        candidate = candidate_sentence.split()
+        bleu_score = sentence_bleu(reference, candidate)
+
+        # Update best score and best candidate if this candidate is better
+        if bleu_score > best_score:
+            best_score = bleu_score
+            best_candidate = candidate_sentence
+
+    return best_candidate
+
+
 class BaselineAutogenAgent:
     def __init__(self, env, obs, info, llm_config):
         self.env = env
@@ -104,40 +123,23 @@ class BaselineAutogenAgent:
         )
 
     def register_functions(self):
+        # Define execute_action as a nested function
+        def execute_action(suggested_action: str) -> str:
+            assert len(list(self.info['admissible_commands'])) == 1
+            admissible_commands = list(self.info['admissible_commands'][0])
+            assert len(admissible_commands) > 0
+
+            action = get_best_candidate(suggested_action, admissible_commands)
+            self.obs, scores, dones, self.info = self.env.step([action])
+            return self.obs[0], f"Admissible Commands: {admissible_commands}, Scores: {scores[0]}, Dones: {dones[0]}"
+
         register_function(
-            self.execute_action,
+            execute_action,
             caller=self.executor_agent,
             executor=self.environment_proxy,
             name="execute_action",
             description="Call this function to execute the suggested action"
         )
-
-    def get_best_candidate(self, reference_sentence, candidate_sentences):
-        # Tokenize the reference sentence
-        reference = [reference_sentence.split()]
-        best_score = 0.0
-        best_candidate = ""
-
-        # Iterate through each candidate sentence and calculate the BLEU score
-        for candidate_sentence in candidate_sentences:
-            candidate = candidate_sentence.split()
-            bleu_score = sentence_bleu(reference, candidate)
-
-            # Update best score and best candidate if this candidate is better
-            if bleu_score > best_score:
-                best_score = bleu_score
-                best_candidate = candidate_sentence
-
-        return best_candidate
-
-    def execute_action(self, suggested_action: str) -> str:
-        assert len(list(self.info['admissible_commands'])) == 1
-        admissible_commands = list(self.info['admissible_commands'][0])
-        assert len(admissible_commands) > 0
-
-        action = self.get_best_candidate(suggested_action, admissible_commands)
-        self.obs, scores, dones, self.info = self.env.step([action])
-        return self.obs[0], f"Admissible Commands: {admissible_commands}, Scores: {scores[0]}, Dones: {dones[0]}"
 
     def run_chat(self):
         if isinstance(self.obs, (list, tuple)):
