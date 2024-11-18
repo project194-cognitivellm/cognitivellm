@@ -2,7 +2,7 @@ import numpy as np
 import os
 import alfworld.agents.environment as environment
 import alfworld.agents.modules.generic as generic
-from agent import AutogenAgent
+from baseline_agent import BaselineAutogenAgent
 
 # Load config
 config = generic.load_config()
@@ -55,7 +55,7 @@ for eval_env_type in eval_envs:
                 print("Reset environment")
                 print(f"Admissible Commands: {info['admissible_commands'][0]}")
 
-                autogen_agent = AutogenAgent(env, obs, info, llm_config)
+                autogen_agent = BaselineAutogenAgent(env, obs, info, llm_config)
 
                 print("Initialization complete; Starting Chat")
 
