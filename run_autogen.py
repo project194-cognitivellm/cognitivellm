@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import yaml
 import argparse
 import alfworld.agents.environment as environment
 import alfworld.agents.modules.generic as generic
@@ -41,8 +42,9 @@ def main():
 
     print(f"Selected Agent: {agent_name}")
 
-    # Load config
-    config = generic.load_config()
+    # Load the config file
+    with open(args.config_file) as reader:
+        config = yaml.safe_load(reader)
 
     eval_paths = config["general"]["evaluate"]["eval_paths"]
     eval_envs = config["general"]["evaluate"]["envs"]
