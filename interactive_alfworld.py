@@ -27,4 +27,6 @@ while True:
     obs, scores, dones, info = env.step([action])
     print("scores: ", scores)
     print("dones: ", dones)
-    print("info: ", info)
+    if dones[0]:
+        print("Resetting environment")
+        obs, info = env.reset()
