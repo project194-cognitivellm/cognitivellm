@@ -5,7 +5,8 @@ import alfworld.agents.modules.generic as generic
 from nltk.translate.bleu_score import sentence_bleu
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 import os
-
+import time
+import csv
 # load config
 config = generic.load_config()
 
@@ -107,7 +108,7 @@ for eval_env_type in eval_envs:
                                 "Your Output: THOUGHT [Now I find a bowl (1). I need to use the desklamp to look at the bowl. "
                                 "I'll go to the desklamp now.] ACTION [go to desk 1]",
                     llm_config=llm_config,
-                    is_termination_msg=lambda msg: msg["content"] is not None and "SUCCESS" in msg["content"],
+                    is_termination_msg=lambda msg: msg["content"] is not None and ("SUCCESS" in msg["content"] or "FAILURE" in msg["content"]),
                     human_input_mode="NEVER"
                 )
 
@@ -117,7 +118,7 @@ for eval_env_type in eval_envs:
                     name="Environment Proxy",
                     llm_config=False,
                     human_input_mode="NEVER",
-                    is_termination_msg=lambda msg: msg["content"] is not None and "SUCCESS" in msg["content"],
+                    is_termination_msg=lambda msg: msg["content"] is not None and ("SUCCESS" in msg["content"] or "FAILURE" in msg["content"]) ,
                 )
 
                 print("Initialized environment proxy")
@@ -127,7 +128,7 @@ for eval_env_type in eval_envs:
                     system_message="You call the execute_action function with the proposed action as the argument",
                     llm_config=llm_config,
                     human_input_mode="NEVER",
-                    is_termination_msg=lambda msg: msg["content"] is not None and "SUCCESS" in msg["content"],
+                    is_termination_msg=lambda msg: msg["content"] is not None and ("SUCCESS" in msg["content"] or "FAILURE" in msg["content"]),
                 )
 
                 print("Initialized executor agent")
@@ -135,10 +136,10 @@ for eval_env_type in eval_envs:
                 grounding_agent = ConversableAgent(
                     name="Grounding_Agent",
                     system_message="You provide general knowledge at the start of task when the chat begins and whenever the "
-                                    "environment_proxy reports the same results three times in a row",
+                                    "environment_proxy reports the same results three times in a row.",
                     llm_config=llm_config,
                     human_input_mode="NEVER",
-                    is_termination_msg=lambda msg: msg["content"] is not None and "SUCCESS" in msg["content"],
+                    is_termination_msg=lambda msg: msg["content"] is not None and ("SUCCESS" in msg["content"] or "FAILURE" in msg["content"]),
                 )
 
                 print("Initialized grounding agent")
@@ -156,7 +157,8 @@ for eval_env_type in eval_envs:
                 grounding_agent.description = ("provides general knowledge at the start of task when the chat begins and whenever the "
                                             "environment_proxy reports the same results three times in a row. If it is the start of the task"
                                             ", call assistant_agent to generate the first plan."
-                                            "If the task is completed, output SUCCESS.")
+                                            "If the task is completed, output SUCCESS."
+                                            "If you think we have rolled out all the options, output FAILURE.")
 
                 group_chat = GroupChat(
                     agents=[assistant_agent, executor_agent, grounding_agent, environment_proxy],
@@ -202,5 +204,19 @@ for eval_env_type in eval_envs:
                 success = "SUCCESS" in chat_result.chat_history[-1]['content']
 
                 success_list.append(success)
-            
+                
+                csv_filename = f"{eval_env_type}_{controller_type}_{eval_path.replace('/', '_')}.csv"
+                with open(csv_filename, 'w', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(['game_index', 'success'])
+                    for idx, success in enumerate(success_list):
+                        writer.writerow([idx, int(success)])  # Convert boolean to 0/1
+                    
+                
+                
+                print('-'*10)
+                print(i, success)
+                print(success_list)
+                time.sleep(10)            
             print(f"Success Rate: {np.sum(success_list)}/{num_games}")
+    
