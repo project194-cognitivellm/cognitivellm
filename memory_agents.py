@@ -1,7 +1,7 @@
 import numpy as np
 import alfworld.agents.environment as environment
 import alfworld.agents.modules.generic as generic
-
+import yaml
 
 from nltk.translate.bleu_score import sentence_bleu
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
@@ -9,8 +9,6 @@ import os
 
 # load config
 config = generic.load_config()
-
-
 API_KEY = "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"
 
 eval_paths = config["general"]["evaluate"]["eval_paths"]
@@ -90,31 +88,68 @@ for eval_env_type in eval_envs:
 
                 llm_config = {"config_list": [{"model": "gpt-4o-mini", "api_key": API_KEY}]}
 
-                assistant_agent = ConversableAgent(
-                    name="Assistant_Agent",
-                    system_message="You generate plans and make action decisions to solve a task. You will receive feedback from"
-                                "other agents on the result of executing your action decisions. You must use this feedback when "
-                                "generating further plans and action decisions."
+                # assistant_agent = ConversableAgent(
+                #     name="Assistant_Agent",
+                #     system_message="You generate plans and make action decisions to solve a task. You will receive feedback from"
+                #                 "other agents on the result of executing your action decisions. You must use this feedback when "
+                #                 "generating further plans and action decisions."
+                #                 "The feedback includes the observations, the admissible commands, scores, and dones."
+                #                 "Your output should have the following format: THOUGHT[contents of your plan.] ACTION[proposed action.]"
+                #                 "You proposed action should be one of the admissible commands."
+                #                 "Example 1: "
+                #                 "Task Description: [You are in the middle of a room. Looking quickly around you, you see a bed 1,"
+                #                 " a desk 2, a desk 1, a safe 1, a drawer 2, a drawer 1, a shelf 3, a shelf 2, and a shelf 1. "
+                #                 "Your task is to: look at bowl under the desklamp.]"
+                #                 "Your Output: THOUGHT [First, I need to find a bowl. A bowl is more likely to appear in desk "
+                #                 "(1-2), drawer (1-2), shelf (1-3), bed (1). Then I need to find and use a desklamp.] "
+                #                 "ACTION [go to desk 1]"
+                #                 "Example 2 (After assistant finds the desklamp at desk 1, then goes to desk 2.): "
+                #                 "Feedback: [on the desk 2, you see a bowl 1, and a cd 3]"
+                #                 "Your Output: THOUGHT [Now I find a bowl (1). I need to use the desklamp to look at the bowl. "
+                #                 "I'll go to the desklamp now.] ACTION [go to desk 1]",
+                #     llm_config=llm_config,
+                #     is_termination_msg=lambda msg: msg["content"] is not None and "SUCCESS" in msg["content"],
+                #     human_input_mode="NEVER"
+                # )
+
+                print("Initialized assistant agent")
+
+                planning_agent = ConversableAgent(
+                    name="Planning_Agent",
+                    system_message="You generate plans to solve a task. You will utilize memory when you generate your plans. You must use appropriate memory"
+                                "to generate plans and action decisions. You will be given feedback to help you as you generate your plan."
                                 "The feedback includes the observations, the admissible commands, scores, and dones."
-                                "Your output should have the following format: THOUGHT[contents of your plan.] ACTION[proposed action.]"
-                                "You proposed action should be one of the admissible commands."
+                                "Your output should have the following format: THOUGHT[contents of your plan.]"
                                 "Example 1: "
                                 "Task Description: [You are in the middle of a room. Looking quickly around you, you see a bed 1,"
                                 " a desk 2, a desk 1, a safe 1, a drawer 2, a drawer 1, a shelf 3, a shelf 2, and a shelf 1. "
                                 "Your task is to: look at bowl under the desklamp.]"
                                 "Your Output: THOUGHT [First, I need to find a bowl. A bowl is more likely to appear in desk "
                                 "(1-2), drawer (1-2), shelf (1-3), bed (1). Then I need to find and use a desklamp.] "
-                                "ACTION [go to desk 1]"
                                 "Example 2 (After assistant finds the desklamp at desk 1, then goes to desk 2.): "
                                 "Feedback: [on the desk 2, you see a bowl 1, and a cd 3]"
                                 "Your Output: THOUGHT [Now I find a bowl (1). I need to use the desklamp to look at the bowl. "
-                                "I'll go to the desklamp now.] ACTION [go to desk 1]",
+                                "I'll go to the desklamp now.]",
                     llm_config=llm_config,
                     is_termination_msg=lambda msg: msg["content"] is not None and "SUCCESS" in msg["content"],
                     human_input_mode="NEVER"
                 )
-
-                print("Initialized assistant agent")
+                action_agent = ConversableAgent(
+                    name="Action_Agent",
+                    system_message="You receive plans as input and make action decisions to solve a task. "
+                                "Your output should have the following format:  ACTION[proposed action.]"
+                                "You proposed action should be one of the admissible commands."
+                                "Example 1: "
+                                "THOUGHT [First, I need to find a bowl. A bowl is more likely to appear in desk "
+                                "(1-2), drawer (1-2), shelf (1-3), bed (1). Then I need to find and use a desklamp.]"
+                                "Your Output: ACTION [go to desk 1]"
+                                "Example 2  THOUGHT [Now I find a bowl (1). I need to use the desklamp to look at the bowl. "
+                                "I'll go to the desklamp now.]"
+                                "Your Output:  ACTION [go to desk 1]",
+                    llm_config=llm_config,
+                    is_termination_msg=lambda msg: msg["content"] is not None and "SUCCESS" in msg["content"],
+                    human_input_mode="NEVER"
+                )
 
                 environment_proxy = ConversableAgent(
                     name="Environment Proxy",
@@ -147,13 +182,17 @@ for eval_env_type in eval_envs:
                 print("Initialized grounding agent")
 
                 allowed_transitions = {
-                    assistant_agent: [executor_agent],
+                    action_agent: [executor_agent],
                     executor_agent: [environment_proxy],
-                    grounding_agent: [executor_agent, assistant_agent],
-                    environment_proxy: [assistant_agent, grounding_agent]
+                    grounding_agent: [executor_agent, planning_agent],
+                    environment_proxy: [planning_agent, grounding_agent],
+                    planning_agent: [action_agent]
                 }
 
-                assistant_agent.description = "generates plans and makes action decisions to solve the task"
+
+                #assistant_agent.description = "generates plans and makes action decisions to solve the task"
+                planning_agent.description = "generates plans for solving a task based on feedback and information from the grounding agent"
+                action_agent.description = "provides an actions, given the output of the planning agent"
                 executor_agent.description = "calls execute_action with the proposed action as the argument to perform the suggested action"
                 environment_proxy.description = "reports action execution results as feedback."
                 grounding_agent.description = ("provides general knowledge at the start of task when the chat begins and whenever the "
@@ -162,7 +201,7 @@ for eval_env_type in eval_envs:
                                             "If the task is completed, output SUCCESS.")
 
                 group_chat = GroupChat(
-                    agents=[assistant_agent, executor_agent, grounding_agent, environment_proxy],
+                    agents=[planning_agent, action_agent, executor_agent, grounding_agent, environment_proxy],
                     messages=[],
                     allowed_or_disallowed_speaker_transitions=allowed_transitions,
                     speaker_transitions_type="allowed",
@@ -194,12 +233,15 @@ for eval_env_type in eval_envs:
                 else:
                     initial_message_content = obs
 
-                chat_result = grounding_agent.initiate_chat(
-                        group_chat_manager,
-                        message={"role": "system", "content": initial_message_content},
-                        summary_method="reflection_with_llm"
-                )
-                print("Finished Chat")
+                try:
+                    chat_result = grounding_agent.initiate_chat(
+                            group_chat_manager,
+                            message={"role": "system", "content": initial_message_content},
+                            summary_method="reflection_with_llm"
+                    )
+                    print("Finished Chat")
+                except Exception as e:
+                    print(f"Group Chat manager fails to chat with error message {e}")
 
 
                 success = "SUCCESS" in chat_result.chat_history[-1]['content']
