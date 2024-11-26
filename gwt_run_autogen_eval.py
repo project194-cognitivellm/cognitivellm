@@ -55,7 +55,8 @@ def create_agents(llm_config):
         In general, the workflow is like the loop of Perception Agent -> Attention Agent -> Evaluation Agent -> Execution Agent. and then back to Perception Agent. But not necessary, as long as you can 
         get the task done. Note before you choose the Execution Agent, you must talk to the Evaluation Agent first to make sure the command is in your ability.
         
-        For this task, you can not have more than one objects in your hand at a time. Thus, you need to devide your task into multiple steps which can be done within your ability.
+        For this task, you are a robot to put the objects in the right place. You can ONLY carray one object at a time. So when you
+        are required to put several objects in the right place, you need to divide the task into several steps and put one object to the right place at a time.
         For this task, it is more likely to search cabinet 3 and garbagecan 1.
         
         Format your response as:
@@ -77,11 +78,13 @@ def create_agents(llm_config):
     # Perception Agent
     perception_agent = ConversableAgent(
         name="Perception_Agent",
-        system_message="""You are the Unconcious Perception Agent. Your task is to analyze the observations,
-        and provide a concise summary of the essential information. 
-        You must provide BOTH the PERCEIVED information and the ADDMISSIBLE_COMMANDS. DO NOT FABRICATE ANYTHING and analyze too much.
-        All the ADDMISSIBLE_COMMANDS must be included.
-        You can only reponse to Global Workspace Agent when Global Workspace Agent said NEXT AGENT is you.
+        system_message="""You are the Unconcious Perception Agent. Your task is to first divide observations and 
+        addmissible commands:
+        1. For observations, provide a concise summary. 
+        2. For addmissible commands, list ALL the addmissible commands and DO NOT FABRICATE.
+        You can ONLY reponse to Global Workspace Agent:
+        1. when Global Workspace Agent said NEXT AGENT is you.
+        2. Environment Proxy Agent gives information.
         Then you will send the information you extract to the Global Workspace Agent.
         
         Format your response as:
@@ -91,7 +94,7 @@ def create_agents(llm_config):
         3. ...
         
         ADDMISSIBLE_COMMANDS:
-        ['command1', 'command2', ...]. All the addmissible commands you can choose from.
+        ['command1', 'command2', ...]. All the addmissible commands from the observations.
         """,
         llm_config=llm_config,
         human_input_mode="NEVER",
