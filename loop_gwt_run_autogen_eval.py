@@ -5,6 +5,7 @@ from autogen import ConversableAgent, register_function, GroupChat, GroupChatMan
 from nltk.translate.bleu_score import sentence_bleu
 import numpy as np
 import time
+from datetime import datetime
 
 
 def get_best_candidate(reference_sentence, candidate_sentences):
@@ -44,7 +45,7 @@ class CognitiveAutogenAgent:
         # Memory Agent
         self.memory_agent = ConversableAgent(
             name="Memory_Agent",
-            system_message="""You are the Memory Agent. You will record the important information related to the task, from the history of observations and commands you took.
+            system_message="""You are the Memory Agent. According to the observation and commond you took, you will record the important information related to the task.
             You can only call the function `record_memory`, not other functions.
             You cannot reply directly, you must call the function `record_memory`.
             """,
@@ -56,7 +57,7 @@ class CognitiveAutogenAgent:
         # Retrive Memory Agent
         self.retrive_memory_agent = ConversableAgent(
             name="Retrive_Memory_Agent",
-            system_message="""You are the Retrive Memory Agent. You will call the function `retrive_memory` to retrieve the memory.
+            system_message="""You are the Retrive Memory Agent. You call the function `retrive_memory` to retrieve the memory.
             You can only call the function `retrive_memory`, not other functions.
             You cannot reply directly, you must call the function `retrive_memory`.
             """,
@@ -68,13 +69,15 @@ class CognitiveAutogenAgent:
         # Task Agent
         self.task_agent = ConversableAgent(
             name="Task_Agent",
-            system_message="""You are the Task Agent. First, you need to analyze the current information, analyze the task, set a series of goals to accomplish the task.
-            You need to know the capability of yourself, and change the goals according to the feedback from the environment and other agents.
-            The possible locations of spraybottle are cabinet 3 and garbagecan 1. And you can open the cabinets.
-            
+            system_message="""You are the Task Agent. First, you need to analyze the current information, think about the task, set a series of goals to accomplish the task.
+            According to the feedback from the environment and other agents, you will gradually know the capability of yourself, and change the goals.
+            You are improving yourself.
+                        
             Format your response as:
+            TASK_AGENT: 
             TASK ANALYSIS: ...
             CURRENT GOAL: ...
+            TASK STATUS: SUCCESS or IN_PROGRESS
             """,
             llm_config=llm_config,
             human_input_mode="NEVER",
@@ -84,17 +87,31 @@ class CognitiveAutogenAgent:
         # Command Evaluation Agent
         self.command_evaluation_agent = ConversableAgent(
             name="Command_Evaluation_Agent",
-            system_message="""You are the Command Evaluation Agent. You must evaluate all the addmissible commands,
-            check their alignment with the current goal. If none of addmissible commands is aligned with the current goal,
+            
+            ## this prompt is good, but it is too slow. gpt-4o-mini will report 500 error.
+            # You are the Command Evaluation Agent. You must evaluate all the addmissible commands,
+            # check their alignment with the current goal. If none of addmissible commands is aligned with the current goal,
+            # you need to report the failure to Task_Agent and let it change the goal.
+            
+            # You need to analyze all the addmissible commands.
+            # Your thinking process should be:
+            # 1. first addmissible command: evaluation
+            # 2. second addmissible command: evaluation
+            # 3. ...
+            # n. last addmissible command: evaluation
+            # After evaluating all the addmissible commands, you need to choose the best addmissible command.
+            # Do not respond the evaluation process.
+            
+            system_message="""You are the Command Evaluation Agent. You first fast select candidate commands from
+            the addmissible commands. Second, evaluate all the candidate commands, check whether they are aligned with the current goal.
+            If none of addmissible commands is aligned with the current goal,
             you need to report the failure to Task_Agent and let it change the goal.
             
-            Format your response as:
-            1. first addmissible command: evaluation
-            2. second addmissible command: evaluation
-            3. ...
-            n. last addmissible command: evaluation
+            Do not respond the evaluation process.
             
-            Execute the best addmissible command, if not, the current goal is out of our capability. TASK_AGENT you should change the goal.
+            Format your response as:
+            COMMAND_EVALUATION_AGENT: 
+            The best addmissible command. If there is no addmissible command aligned with the current goal, the current goal is out of our capability. TASK_AGENT, you need to change the goal and plan.
             """,
             llm_config=llm_config,
             human_input_mode="NEVER",
@@ -104,11 +121,12 @@ class CognitiveAutogenAgent:
         # Executor Agent
         self.executor_agent = ConversableAgent(
             name="Executor_Agent",
-            system_message=("You execute the proposed action in the environment and return the observation."
-                            "The action you choose should be one of the addmissible commands."
-                            "You can only call the function `execute_action`, not other functions."
-                            "You cannot reply directly, you must call the function `execute_action`."
-                            ),
+            system_message="""You are the Executor Agent. You will execute the best addmissible command.
+            The action you choose should be one of the addmissible commands.
+            Check whether the action is in the addmissible commands before you call the function `execute_action`.
+            You can only call the function `execute_action`, not other functions.
+            You cannot reply directly, you must call the function `execute_action`.
+            """,
             llm_config=self.llm_config,  # Ensure llm_config is set
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: msg["content"] is not None and "SUCCESS" in msg["content"],
@@ -164,11 +182,11 @@ class CognitiveAutogenAgent:
             self.obs, scores, dones, self.info = self.env.step([action])
             
             # save the addmissible commands into a txt file
-            with open("admissible_commands.txt", "w") as f:
+            with open(admissible_commands_path, "w") as f:
                 f.write(f"{admissible_commands}\n")
-            
-            time.sleep(1)
-            return f"Observation: {self.obs[0]}, Admissible Commands: {admissible_commands}"
+                            
+            # time.sleep(1)
+            return f"Observation: {self.obs[0]}, Success: {dones[0]}"
 
         # Register the execute_action function with Executor_Agent
         register_function(
@@ -181,7 +199,7 @@ class CognitiveAutogenAgent:
 
         # Define record_memory function
         def record_memory(important_information: str) -> str:
-            with open("memory.txt", "a+") as f:
+            with open(memory_path, "a+") as f:
                 # Move cursor to beginning of file
                 f.seek(0)
                 # Read all lines
@@ -198,7 +216,7 @@ class CognitiveAutogenAgent:
                 
                 # Write new memory entry
                 f.write(f"step: {step}, important_information: {important_information}\n")
-            time.sleep(1)
+            # time.sleep(1)
             return "Memory recorded."
         
         # Register the record_memory function with Memory_Agent
@@ -214,16 +232,16 @@ class CognitiveAutogenAgent:
         def retrive_memory() -> str:
             informations = ""
             
-            with open("memory.txt", "r") as f:
+            with open(memory_path, "r") as f:
                 for line in f:
                     informations += line
                     
             informations += "\nAddmissible Commands: "
-            with open("admissible_commands.txt", "r") as f:
+            with open(admissible_commands_path, "r") as f:
                 informations += f.read()
 
             
-            time.sleep(1)
+            # time.sleep(1)
             return informations
 
         # Register the retrive_memory function with Retrive_Memory_Agent
@@ -264,6 +282,17 @@ eval_envs = config["general"]["evaluate"]["envs"]
 controllers = config["general"]["evaluate"]["controllers"]
 repeats = config["general"]["evaluate"]["repeats"]
 
+
+# run logs
+base_path = "runs"
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+base_path = os.path.join(base_path, timestamp)
+os.makedirs(base_path, exist_ok=True)
+
+
+result_list_path = os.path.join(base_path, "result_list.txt")
+chat_round_list = []
+
 for eval_env_type in eval_envs:
     for controller_type in (controllers if eval_env_type == "AlfredThorEnv" else ["tw"]):
         for eval_path in eval_paths:
@@ -281,12 +310,22 @@ for eval_env_type in eval_envs:
             success_list = []
 
             for i in range(num_games):
+                
+                game_path = os.path.join(base_path, f"game_{i}")    
+                os.makedirs(game_path, exist_ok=True)
+                
+                memory_path = os.path.join(game_path, "memory.txt")
+                admissible_commands_path = os.path.join(game_path, "admissible_commands.txt")
+                chat_history_path = os.path.join(game_path, "chat_history.txt")
+                
+                result_path = os.path.join(game_path, "result.txt")
+                
                 print("Initialized Environment")
 
                 obs, info = env.reset()
                 
-                if i not in [1,2,4,5,6,10,11,13,14,16,18,19,21,22,23,24,25,26,28,30,31,33,34,35,36,38,39,42,43,44,45,48,49,50,51,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,73]:
-                    continue
+                # if i not in [1,2,4,5,6,10,11,13,14,16,18,19,21,22,23,24,25,26,28,30,31,33,34,35,36,38,39,42,43,44,45,48,49,50,51,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,73]:
+                #     continue
                 
                 print("Reset environment")
 
@@ -294,26 +333,56 @@ for eval_env_type in eval_envs:
                     # "timeout": 6000,
                     "cache_seed": None,
                     # "temperature": 1,
-                    # "max_tokens": 4000,
-                    "config_list": [{"model": "gpt-4o", "api_key": API_KEY}]}
+                    "max_tokens": 4000,
+                    "config_list": [{"model": "gpt-4o-mini", "api_key": API_KEY}]}
                 
                 # find the task description in the observation, save it as a txt file. 
                 task_description = obs[0].split("Your task is to: ")[1]
                 initial_observation = obs[0].split("Your task is to: ")[0].split("\n\n")[1]
-                with open("memory.txt", "w") as f:
+                with open(memory_path, "w") as f:
                     f.write(f"Task: {task_description}\n")
                     
                 admissible_commands = list(info['admissible_commands'][0])
                 # save the addmissible commands into a txt file
-                with open("admissible_commands.txt", "w") as f:
+                with open(admissible_commands_path, "w") as f:
                     f.write(f"{admissible_commands}\n")
                                 
                 agent = CognitiveAutogenAgent(env, obs, info, llm_config)
                 chat_result = agent.run_chat()
-                print(chat_result)
-                success = "SUCCESS" in chat_result.chat_history[-1]['content']
-                print(f"Success: {success}")
+                # is chat_result a string?
+                if isinstance(chat_result, str):
+                    success = "SUCCESS" in chat_result
+                    
+                    # record the chat history into a txt file
+                    with open(chat_history_path, "w") as f:
+                        f.write(chat_result)
+                    
+                    chat_round_list.append(-1)
+                else:
+                    success = "SUCCESS" in chat_result.chat_history[-1]['content']
+                    
+                    # record the chat history into a txt file
+                    # chat_result.chat_history is a list of dictionaries
+                    with open(chat_history_path, "w") as f:
+                        for message in chat_result.chat_history:
+                            f.write('-'*100 + '\n')
+                            f.write(f"{message['role']}: {message['content']}\n")
+                    
+                    chat_round_list.append(len(chat_result.chat_history))
+                        
                 success_list.append(success)
-                exit()
+                
+                # save success and chat_round into a txt file
+                with open(result_path, "w") as f:
+                    f.write(f"Success: {success}\n")
+                    f.write(f"Chat Round: {chat_round_list[-1]}\n")
+                
+                
+                # save success list and chat_round_list into a txt file
+                with open(result_list_path, "w") as f:
+                    f.write(f"Success List: {success_list}\n")
+                    f.write(f"Chat Round List: {chat_round_list}\n")
+                
+                
                 
             print(f"Success Rate: {np.sum(success_list)}/{num_games}")
