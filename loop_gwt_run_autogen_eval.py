@@ -275,7 +275,8 @@ import alfworld.agents.modules.generic as generic
 import alfworld.agents.environment as environment
 # load config
 config = generic.load_config()
-API_KEY = "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"
+API_KEY = os.environ.get("OPENAI_API_KEY")
+
 
 eval_paths = config["general"]["evaluate"]["eval_paths"]
 eval_envs = config["general"]["evaluate"]["envs"]
