@@ -348,27 +348,46 @@ for eval_env_type in eval_envs:
                     f.write(f"{admissible_commands}\n")
                                 
                 agent = CognitiveAutogenAgent(env, obs, info, llm_config)
-                chat_result = agent.run_chat()
-                # is chat_result a string?
-                if isinstance(chat_result, str):
-                    success = "SUCCESS" in chat_result
-                    
-                    # record the chat history into a txt file
-                    with open(chat_history_path, "w") as f:
-                        f.write(chat_result)
-                    
-                    chat_round_list.append(-1)
+                
+                run_chat = True
+                
+                try:
+                    chat_result = agent.run_chat()
+                except Exception as e:
+                    print(f"Group Chat manager fails to chat with error message {e}")
+                    run_chat = False
+                    error_message = e
+                
+                if run_chat:
+                    # is chat_result a string?
+                    if isinstance(chat_result, str):
+                        success = "SUCCESS" in chat_result
+                        
+                        # record the chat history into a txt file
+                        with open(chat_history_path, "w") as f:
+                            f.write(chat_result)
+                        
+                        chat_round_list.append(-1)
+                    else:
+                        success = "SUCCESS" in chat_result.chat_history[-1]['content']
+                        
+                        # record the chat history into a txt file
+                        # chat_result.chat_history is a list of dictionaries
+                        with open(chat_history_path, "w") as f:
+                            for message in chat_result.chat_history:
+                                f.write('-'*100 + '\n')
+                                f.write(f"{message['role']}: {message['content']}\n")
+                        
+                        chat_round_list.append(len(chat_result.chat_history))
                 else:
-                    success = "SUCCESS" in chat_result.chat_history[-1]['content']
+                    chat_round_list.append(-1)
                     
-                    # record the chat history into a txt file
-                    # chat_result.chat_history is a list of dictionaries
+                    success = False
+                    
                     with open(chat_history_path, "w") as f:
-                        for message in chat_result.chat_history:
-                            f.write('-'*100 + '\n')
-                            f.write(f"{message['role']}: {message['content']}\n")
+                        f.write(f"Error Message: {error_message}\n")
                     
-                    chat_round_list.append(len(chat_result.chat_history))
+                    
                         
                 success_list.append(success)
                 
