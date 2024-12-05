@@ -7,6 +7,10 @@
 - [Description](#description)
 
 
+## Main Ideas
+1) Need a cognitive agent ranking system, i.e. something that is able to rank various cognitive elements of the brain.
+2) Need memory and a means of learning from mistakes
+
 ## Installation
 
 ### Windows
