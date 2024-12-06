@@ -230,7 +230,7 @@ class CognitiveAutogenAgent:
         
     def initialize_groupchat(self):
         customized_state_transition = True
-        
+        max_chat_round = 200
         if customized_state_transition:
 
             def state_transition(last_speaker, groupchat):
@@ -274,7 +274,7 @@ class CognitiveAutogenAgent:
                 ],
                 messages=[],
                 speaker_selection_method=state_transition,
-                max_round=10,
+                max_round=max_chat_round,
                 send_introductions=True
             )
             
@@ -301,7 +301,7 @@ class CognitiveAutogenAgent:
                 messages=[],
                 allowed_or_disallowed_speaker_transitions=self.allowed_transitions,
                 speaker_transitions_type="allowed",
-                max_round=200,
+                max_round=max_chat_round,
                 send_introductions=True
             )
 
@@ -398,6 +398,8 @@ for eval_env_type in eval_envs:
                 
                 result_path = os.path.join(game_path, "result.txt")
                 
+                error_message_path = os.path.join(game_path, "error_message.txt")
+                
                 print("Initialized Environment")
 
                 obs, info = env.reset()
@@ -432,12 +434,19 @@ for eval_env_type in eval_envs:
                 chat_result = None
                 error_message = None
                 
+                print("Run chat")
                 try:
                     chat_result, error_message = agent.run_chat()                                        
                 except Exception as e:
                     print(f"Group Chat manager fails to chat with error message {e}")
                     error_message = e
                 
+                if error_message is not None:
+                    with open(error_message_path, "a") as f:
+                        f.write(f"Run Chat: {error_message}\n")
+                
+                
+                print("Resume chat")
                 max_num_of_resume = 3
                 if chat_result is None:
                     
@@ -450,6 +459,10 @@ for eval_env_type in eval_envs:
                         
                         if chat_result is not None:
                             break
+                        
+                        if error_message is not None:
+                            with open(error_message_path, "a") as f:
+                                f.write(f"Resume Chat {i+1}: {error_message}\n")
                         
                 
                 # print(type(chat_result))
@@ -506,11 +519,8 @@ for eval_env_type in eval_envs:
                     
                     success = False
                     
-                    with open(chat_history_path, "w") as f:
-                        if error_message is not None:
-                            f.write(f"Error Message: {error_message}\n")
-                        else:
-                            f.write(f"Error Message: unknown error\n")
+                
+                # exit()
                     
                     
                         
