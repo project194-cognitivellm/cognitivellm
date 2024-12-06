@@ -76,7 +76,6 @@ class CognitiveAutogenAgent:
             You are improving yourself.
                         
             Format your response as:
-            TASK_AGENT: 
             TASK ANALYSIS: ...
             CURRENT GOAL: ...
             """,
@@ -108,7 +107,6 @@ class CognitiveAutogenAgent:
             Do not respond the evaluation process.
             
             Format your response as:
-            COMMAND_EVALUATION_AGENT: 
             The best command. Addmissible or not. 
             If not addmissible, Task_Agent, current goal is out of our capability, please change the goal and replan.
             If addmissible, Executor_Agent, execute the command.
@@ -276,7 +274,7 @@ class CognitiveAutogenAgent:
                 ],
                 messages=[],
                 speaker_selection_method=state_transition,
-                max_round=200,
+                max_round=10,
                 send_introductions=True
             )
             
@@ -404,10 +402,10 @@ for eval_env_type in eval_envs:
 
                 obs, info = env.reset()
                 
-                if i not in [10,11,13,14,16,18,19,21,22,23,24,25,26,28,30,31,33,34,35,36,38,39,42,43,44,45,48,49,50,51,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,73]:
-                    continue
+                # if i not in [10,11,13,14,16,18,19,21,22,23,24,25,26,28,30,31,33,34,35,36,38,39,42,43,44,45,48,49,50,51,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,73]:
+                #     continue
                 
-                print("Reset environment")
+                # print("Reset environment")
 
                 llm_config = {
                     "timeout": 1000,
@@ -461,17 +459,36 @@ for eval_env_type in eval_envs:
                 # exit()
                 
                 if chat_result is not None:
-                    if "chat_history" in chat_result.__dict__.keys() and len(chat_result.chat_history) > 0 and isinstance(chat_result.chat_history[-1]['content'], str):
+                    if "chat_history" in chat_result.__dict__.keys() and len(chat_result.chat_history) > 0:
                         
-                        success = "SUCCESS" in chat_result.chat_history[-1]['content']
+                        # Two cases: if last message is tool calls, "content" is None.
+                        # Otherwise, "content" is not None.
+                        # When it is tool calls, success should be  False.
+                        # The game will not completed by tool calls.
+                        if chat_result.chat_history[-1]['content'] is not None:
+                            success = "SUCCESS" in chat_result.chat_history[-1]['content']
+                        else: 
+                            success = False
                         
-                        # record the chat history into a txt file
-                        # chat_result.chat_history is a list of dictionaries
+                        # message is a list of dictionaries, record every key-value pair into a readable file.
+                        # if there is "name" and "role" in the message, record them first.
                         with open(chat_history_path, "w") as f:
                             for message in chat_result.chat_history:
-                                f.write('-'*100 + '\n')
-                                f.write(f"{message['role']}: {message['content']}\n")
-                        
+                                f.write('-'*20 + '\n')
+                                
+                                first_keys = ["name", "role", "content"]
+                                
+                                for key in first_keys:
+                                    if key in message.keys():
+                                        if key == "content":
+                                            f.write(f"{key}:\n{message[key]}\n")
+                                        else:
+                                            f.write(f"{key}: {message[key]}\n")
+                                
+                                for key, value in message.items():
+                                    if key not in first_keys:
+                                        f.write(f"{key}: {value}\n")
+                                
                         chat_round_list.append(len(chat_result.chat_history))
                     else:
                         chat_round_list.append(-1)
@@ -480,6 +497,10 @@ for eval_env_type in eval_envs:
                         
                         with open(chat_history_path, "w") as f:
                             f.write(f"Error Message: no chat history in chat result\n")
+                            
+                        print(chat_result)
+                        exit()
+                        
                 else:
                     chat_round_list.append(-1)
                     
