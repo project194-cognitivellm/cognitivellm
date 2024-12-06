@@ -238,8 +238,6 @@ class CognitiveAutogenAgent:
             def state_transition(last_speaker, groupchat):
                 messages = groupchat.messages
 
-                print(len(messages))
-
                 # record the last message
                 # last message is a Dict. use pickle to save it.
                 with open(message_path, "wb") as f:
