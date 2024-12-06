@@ -413,7 +413,7 @@ for eval_env_type in eval_envs:
                     "timeout": 1000,
                     "cache_seed": None,
                     # "temperature": 1,
-                    "max_tokens": 100,
+                    "max_tokens": 300,
                     "config_list": [{"model": "gpt-4o-mini", "api_key": API_KEY}]}
                 
                 # find the task description in the observation, save it as a txt file. 
