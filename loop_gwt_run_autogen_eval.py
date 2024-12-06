@@ -6,6 +6,7 @@ from nltk.translate.bleu_score import sentence_bleu
 import numpy as np
 import time
 from datetime import datetime
+import pickle
 
 
 def get_best_candidate(reference_sentence, candidate_sentences):
@@ -39,6 +40,7 @@ class CognitiveAutogenAgent:
 
         self.initialize_agents()
         self.register_functions()
+        self.initialize_groupchat()
 
     def initialize_agents(self):
 
@@ -77,7 +79,6 @@ class CognitiveAutogenAgent:
             TASK_AGENT: 
             TASK ANALYSIS: ...
             CURRENT GOAL: ...
-            TASK STATUS: SUCCESS or IN_PROGRESS
             """,
             llm_config=llm_config,
             human_input_mode="NEVER",
@@ -102,16 +103,15 @@ class CognitiveAutogenAgent:
             # After evaluating all the addmissible commands, you need to choose the best addmissible command.
             # Do not respond the evaluation process.
             
-            system_message="""You are the Command Evaluation Agent. You first fast select candidate commands from
-            the addmissible commands. Second, evaluate all the candidate commands, check whether they are aligned with the current goal.
-            If none of addmissible commands is aligned with the current goal,
-            you need to report the failure to Task_Agent and let it change the goal.
-            
+            system_message="""You are the Command Evaluation Agent. You first fast analyze all the addmissible commands, and 
+            check whether they are aligned with the current goal, choose the best addmissible command.
             Do not respond the evaluation process.
             
             Format your response as:
             COMMAND_EVALUATION_AGENT: 
-            The best addmissible command. If there is no addmissible command aligned with the current goal, the current goal is out of our capability. TASK_AGENT, you need to change the goal and plan.
+            The best command. Addmissible or not. 
+            If not addmissible, Task_Agent, current goal is out of our capability, please change the goal and replan.
+            If addmissible, Executor_Agent, execute the command.
             """,
             llm_config=llm_config,
             human_input_mode="NEVER",
@@ -131,16 +131,8 @@ class CognitiveAutogenAgent:
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: msg["content"] is not None and "SUCCESS" in msg["content"],
         )
-
-
-        # Allowed transitions between agents
-        self.allowed_transitions = {
-            self.memory_agent: [self.retrive_memory_agent],
-            self.retrive_memory_agent: [self.task_agent],
-            self.task_agent: [self.command_evaluation_agent],
-            self.command_evaluation_agent: [self.executor_agent, self.task_agent],
-            self.executor_agent: [self.memory_agent],
-        }
+        
+        
 
         # Agent descriptions
         self.task_agent.description = "analyzes the task and proposes a plan to accomplish the task"
@@ -149,26 +141,7 @@ class CognitiveAutogenAgent:
         self.command_evaluation_agent.description = "evaluates the outcome of the command"
         self.executor_agent.description = "executes actions and returns observations"
 
-        # Group Chat
-        self.group_chat = GroupChat(
-            agents=[
-                self.memory_agent,
-                self.retrive_memory_agent,
-                self.task_agent,
-                self.command_evaluation_agent,
-                self.executor_agent,
-            ],
-            messages=[],
-            allowed_or_disallowed_speaker_transitions=self.allowed_transitions,
-            speaker_transitions_type="allowed",
-            max_round=200,
-            send_introductions=True
-        )
-
-        self.group_chat_manager = GroupChatManager(
-            groupchat=self.group_chat,
-            llm_config=self.llm_config,
-        )
+        
 
     def register_functions(self):
         # Define execute_action as a nested function
@@ -186,7 +159,10 @@ class CognitiveAutogenAgent:
                 f.write(f"{admissible_commands}\n")
                             
             # time.sleep(1)
-            return f"Observation: {self.obs[0]}, Success: {dones[0]}"
+            if dones[0]:
+                return f"Observation: {self.obs[0]}, SUCCESS"
+            else:
+                return f"Observation: {self.obs[0]}, IN_PROGRESS"
 
         # Register the execute_action function with Executor_Agent
         register_function(
@@ -252,8 +228,95 @@ class CognitiveAutogenAgent:
             name="retrive_memory",
             description="Retrive the memory"
         )
+        
+        
+    def initialize_groupchat(self):
+        customized_state_transition = True
+        
+        if customized_state_transition:
+
+            def state_transition(last_speaker, groupchat):
+                messages = groupchat.messages
+
+                print(len(messages))
+
+                # record the last message
+                # last message is a Dict. use pickle to save it.
+                with open(message_path, "wb") as f:
+                    pickle.dump(messages, f)
+                
+                if last_speaker is self.memory_agent:
+                    
+                    next_speaker = self.retrive_memory_agent
+                elif last_speaker is self.retrive_memory_agent:
+                    next_speaker = self.task_agent
+                elif last_speaker is self.task_agent:
+                    next_speaker = self.command_evaluation_agent
+                elif last_speaker is self.command_evaluation_agent:
+                    if "Task_Agent" in messages[-1]["content"]:
+                        next_speaker = self.task_agent
+                    else:
+                        next_speaker = self.executor_agent
+                elif last_speaker is self.executor_agent:
+                    next_speaker = self.memory_agent
+
+                tool_call_flag = "tool_calls" in messages[-1]
+                if tool_call_flag:
+                    return last_speaker
+                else:
+                    return next_speaker
+            
+            
+            # Group Chat
+            self.group_chat = GroupChat(
+                agents=[
+                    self.memory_agent,
+                    self.retrive_memory_agent,
+                    self.task_agent,
+                    self.command_evaluation_agent,
+                    self.executor_agent,
+                ],
+                messages=[],
+                speaker_selection_method=state_transition,
+                max_round=200,
+                send_introductions=True
+            )
+            
+        else:
+            # Allowed transitions between agents
+            self.allowed_transitions = {
+                self.memory_agent: [self.retrive_memory_agent],
+                self.retrive_memory_agent: [self.task_agent],
+                self.task_agent: [self.command_evaluation_agent],
+                self.command_evaluation_agent: [self.executor_agent, self.task_agent],
+                self.executor_agent: [self.memory_agent],
+            }
+            
+            
+            # Group Chat
+            self.group_chat = GroupChat(
+                agents=[
+                    self.memory_agent,
+                    self.retrive_memory_agent,
+                    self.task_agent,
+                    self.command_evaluation_agent,
+                    self.executor_agent,
+                ],
+                messages=[],
+                allowed_or_disallowed_speaker_transitions=self.allowed_transitions,
+                speaker_transitions_type="allowed",
+                max_round=200,
+                send_introductions=True
+            )
+
+        self.group_chat_manager = GroupChatManager(
+            groupchat=self.group_chat,
+            llm_config=self.llm_config,
+        )
 
     def run_chat(self):
+        chat_result = None
+        error_message = None
         try:
             if isinstance(self.obs, (list, tuple)):
                 initial_message_content = self.obs[0]
@@ -267,9 +330,25 @@ class CognitiveAutogenAgent:
                 summary_method="reflection_with_llm"
             )
         except Exception as e:
-            return f"Group Chat manager fails to chat with error message {e}"
+            print(f"Group Chat manager fails to chat with error message {e}")
+            error_message = e
+            
+        return chat_result, error_message
+    
+    def resume_chat(self, last_message):
+        chat_result = None
+        error_message = None
+        try:
+            last_agent, last_message = self.group_chat_manager.resume(messages=last_message)
 
-        return chat_result
+            # Resume the chat using the last agent and message
+            chat_result = last_agent.initiate_chat(recipient=self.group_chat_manager, message=last_message, clear_history=False)
+            
+        except Exception as e:
+            print(f"Group Chat manager fails to chat with error message {e}")
+            error_message = e
+
+        return chat_result, error_message
     
 import alfworld.agents.modules.generic as generic
 import alfworld.agents.environment as environment
@@ -319,22 +398,24 @@ for eval_env_type in eval_envs:
                 admissible_commands_path = os.path.join(game_path, "admissible_commands.txt")
                 chat_history_path = os.path.join(game_path, "chat_history.txt")
                 
+                message_path = os.path.join(game_path, "last_message.pkl")
+                
                 result_path = os.path.join(game_path, "result.txt")
                 
                 print("Initialized Environment")
 
                 obs, info = env.reset()
                 
-                # if i not in [1,2,4,5,6,10,11,13,14,16,18,19,21,22,23,24,25,26,28,30,31,33,34,35,36,38,39,42,43,44,45,48,49,50,51,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,73]:
-                #     continue
+                if i not in [10,11,13,14,16,18,19,21,22,23,24,25,26,28,30,31,33,34,35,36,38,39,42,43,44,45,48,49,50,51,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,73]:
+                    continue
                 
                 print("Reset environment")
 
                 llm_config = {
-                    # "timeout": 6000,
+                    "timeout": 1000,
                     "cache_seed": None,
                     # "temperature": 1,
-                    "max_tokens": 4000,
+                    "max_tokens": 100,
                     "config_list": [{"model": "gpt-4o-mini", "api_key": API_KEY}]}
                 
                 # find the task description in the observation, save it as a txt file. 
@@ -352,24 +433,38 @@ for eval_env_type in eval_envs:
                 
                 run_chat = True
                 
+                chat_result = None
+                error_message = None
+                
                 try:
-                    chat_result = agent.run_chat()
+                    chat_result, error_message = agent.run_chat()                                        
                 except Exception as e:
                     print(f"Group Chat manager fails to chat with error message {e}")
-                    run_chat = False
                     error_message = e
                 
-                if run_chat:
-                    # is chat_result a string?
-                    if isinstance(chat_result, str):
-                        success = "SUCCESS" in chat_result
+                max_num_of_resume = 3
+                if chat_result is None:
+                    
+                    for i in range(max_num_of_resume):
+                        if os.path.exists(message_path):
+                            with open(message_path, "rb") as f:
+                                last_message = pickle.load(f)   
+                            
+                        chat_result, error_message = agent.resume_chat(last_message)
                         
-                        # record the chat history into a txt file
-                        with open(chat_history_path, "w") as f:
-                            f.write(chat_result)
+                        if chat_result is not None:
+                            break
                         
-                        chat_round_list.append(-1)
-                    else:
+                
+                # print(type(chat_result))
+                # print(chat_result)
+                # print(list(chat_result.__dict__.keys()))
+                # print(f"Run chat: {run_chat}")
+                # exit()
+                
+                if chat_result is not None:
+                    if "chat_history" in chat_result.__dict__.keys() and len(chat_result.chat_history) > 0 and isinstance(chat_result.chat_history[-1]['content'], str):
+                        
                         success = "SUCCESS" in chat_result.chat_history[-1]['content']
                         
                         # record the chat history into a txt file
@@ -380,13 +475,23 @@ for eval_env_type in eval_envs:
                                 f.write(f"{message['role']}: {message['content']}\n")
                         
                         chat_round_list.append(len(chat_result.chat_history))
+                    else:
+                        chat_round_list.append(-1)
+                    
+                        success = False
+                        
+                        with open(chat_history_path, "w") as f:
+                            f.write(f"Error Message: no chat history in chat result\n")
                 else:
                     chat_round_list.append(-1)
                     
                     success = False
                     
                     with open(chat_history_path, "w") as f:
-                        f.write(f"Error Message: {error_message}\n")
+                        if error_message is not None:
+                            f.write(f"Error Message: {error_message}\n")
+                        else:
+                            f.write(f"Error Message: unknown error\n")
                     
                     
                         
@@ -402,7 +507,6 @@ for eval_env_type in eval_envs:
                 with open(result_list_path, "w") as f:
                     f.write(f"Success List: {success_list}\n")
                     f.write(f"Chat Round List: {chat_round_list}\n")
-                
-                
+                                
                 
             print(f"Success Rate: {np.sum(success_list)}/{num_games}")
