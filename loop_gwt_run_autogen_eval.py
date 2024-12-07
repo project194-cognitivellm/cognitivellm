@@ -56,6 +56,17 @@ class CognitiveAutogenAgent:
             is_termination_msg=lambda msg: msg["content"] is not None and ("SUCCESS" in msg["content"] or "FAILURE" in msg["content"])
         )
         
+        self.memory_agent = ConversableAgent(
+            name="Memory_Agent",
+            system_message="""You are the Memory Agent. According to the observation and commond you took, you will record the important information related to the task.
+            You can only call the function `record_memory`, not other functions.
+            You cannot reply directly, you must call the function `record_memory`.
+            """,
+            llm_config=llm_config,
+            human_input_mode="NEVER",
+            is_termination_msg=lambda msg: msg["content"] is not None and ("SUCCESS" in msg["content"] or "FAILURE" in msg["content"])
+        )
+        
         # Retrive Memory Agent
         self.retrive_memory_agent = ConversableAgent(
             name="Retrive_Memory_Agent",
@@ -236,6 +247,7 @@ class CognitiveAutogenAgent:
             def state_transition(last_speaker, groupchat):
                 messages = groupchat.messages
 
+                print(len(messages))
                 # record the last message
                 # last message is a Dict. use pickle to save it.
                 with open(message_path, "wb") as f:
@@ -448,12 +460,22 @@ for eval_env_type in eval_envs:
                 
                 print("Resume chat")
                 max_num_of_resume = 3
+                
                 if chat_result is None:
-                    
                     for i in range(max_num_of_resume):
+                        print(i)
                         if os.path.exists(message_path):
                             with open(message_path, "rb") as f:
                                 last_message = pickle.load(f)   
+                            
+                            remove_index = 0
+                            for j in range(len(last_message)):
+                                if last_message[-j-1]['role'] == 'user':
+                                    if last_message[-j-1]['name'] == 'chat_manager' or last_message[-j-1]['name'] == 'Task_Agent':
+                                        remove_index = - j
+                                        break
+                            
+                            last_message = last_message[:len(last_message)+remove_index]
                             
                         chat_result, error_message = agent.resume_chat(last_message)
                         
@@ -464,7 +486,6 @@ for eval_env_type in eval_envs:
                             with open(error_message_path, "a") as f:
                                 f.write(f"Resume Chat {i+1}: {error_message}\n")
                         
-                
                 # print(type(chat_result))
                 # print(chat_result)
                 # print(list(chat_result.__dict__.keys()))
