@@ -357,7 +357,7 @@ class CognitiveAutogenAgent:
         
     def initialize_groupchat(self):
         customized_state_transition = True
-        max_chat_round = 300
+        max_chat_round = 200
         if customized_state_transition:
 
             def state_transition(last_speaker, groupchat):
@@ -518,6 +518,7 @@ for eval_env_type in eval_envs:
             max_steps = 100
             success_list = []
 
+            num_games = 50
             for i in range(num_games):
                 
                 game_path = os.path.join(base_path, f"game_{i}")    

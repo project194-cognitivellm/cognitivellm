@@ -43,7 +43,7 @@ for eval_env_type in eval_envs:
             
             success_list = []
             
-            for i in range(num_games):
+            for i in range(50):
                 
                 print("Initialized Environment")
 
@@ -165,7 +165,7 @@ for eval_env_type in eval_envs:
                     messages=[],
                     allowed_or_disallowed_speaker_transitions=allowed_transitions,
                     speaker_transitions_type="allowed",
-                    max_round=50,
+                    max_round=100,
                     send_introductions=True
                 )
 
