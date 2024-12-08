@@ -69,3 +69,74 @@ Evaluation script for AutoGen on ALFWorld.
 python run_autogen.py configs/eval_config.yaml 
 ```
 
+### Loop GWT
+Loop GWT script for AutoGen on ALFWorld.
+```sh
+python loop_gwt_run_autogen_eval.py configs/eval_config.yaml 
+```
+
+Key features:
+1. Resume chat from the last message. If the chat fails, it will try 3 times. Check the following code for details.
+```sh
+max_num_of_resume = 3
+if chat_result is None:
+    
+    for i in range(max_num_of_resume):
+        if os.path.exists(message_path):
+            with open(message_path, "rb") as f:
+                last_message = pickle.load(f)   
+            
+        chat_result, error_message = agent.resume_chat(last_message)
+        
+        if chat_result is not None:
+            break
+```
+
+2. Loop transition. When A talks to B, B talks to C. But sometimes, B will need to talk to A again. For example, command evaluation agent finds there are no addmissible command which can complete the task. Then he needs to tell back to previous agent, let him replan. So there is a loop transition. Check the following code for details.
+```sh
+def state_transition(last_speaker, groupchat):
+    messages = groupchat.messages
+
+    # record the last message
+    # last message is a Dict. use pickle to save it.
+    with open(message_path, "wb") as f:
+        pickle.dump(messages, f)
+    
+    if last_speaker is self.memory_agent:
+        
+        next_speaker = self.retrive_memory_agent
+    elif last_speaker is self.retrive_memory_agent:
+        next_speaker = self.task_agent
+    elif last_speaker is self.task_agent:
+        next_speaker = self.command_evaluation_agent
+    elif last_speaker is self.command_evaluation_agent:
+        if "Task_Agent" in messages[-1]["content"]:
+            next_speaker = self.task_agent
+        else:
+            next_speaker = self.executor_agent
+    elif last_speaker is self.executor_agent:
+        next_speaker = self.memory_agent
+
+    tool_call_flag = "tool_calls" in messages[-1]
+    if tool_call_flag:
+        return last_speaker
+    else:
+        return next_speaker
+
+
+# Group Chat
+self.group_chat = GroupChat(
+    agents=[
+        self.memory_agent,
+        self.retrive_memory_agent,
+        self.task_agent,
+        self.command_evaluation_agent,
+        self.executor_agent,
+    ],
+    messages=[],
+    speaker_selection_method=state_transition,
+    max_round=200,
+    send_introductions=True
+)
+```
+
