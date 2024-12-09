@@ -11,6 +11,23 @@
 1) Need a cognitive agent ranking system, i.e. something that is able to rank various cognitive elements of the brain.
 2) Need memory and a means of learning from mistakes
 
+Create 4 agents:
+1) Perception / Observer Agent
+2) Reasoning Agent
+3) Planning Agent
+4) Action Agent
+5) Learning Agent
+6) Memory database (capped at X size)
+
+Using the global workspace theory of intelligence, build a stage for this: 
+- Allow Perception, Reasoning, Planning, Action, and Learning agents to run simulatenously with direct retrieval with the memory
+- (Memory should contain structured samples, and chat histories)
+- Randomly have each agent run, using data from memory (ideally we should derive a prioritization mechanism, but now no one cares)
+    This is in replacement of fixed reasoning steps, first perception then reasoning then planning whatever whatever. This would allow our system to have (imo) better results.
+- Set number of iterations of agent runs to a fixed constant, such as 30(per query)
+Short Term Memory: Whatever the task specifies,, i.e. all the previous iterations within the task
+Long Term Memory: 
+
 ## Installation
 
 ### Windows

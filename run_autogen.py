@@ -203,6 +203,8 @@ for eval_env_type in eval_envs:
 
 
                 success = "SUCCESS" in chat_result.chat_history[-1]['content']
+                import pdb
+                pdb.set_trace()
 
                 success_list.append(success)
             

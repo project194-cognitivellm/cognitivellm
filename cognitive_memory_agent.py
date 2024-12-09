@@ -218,6 +218,8 @@ for eval_env_type in eval_envs:
                 chat_result = agent.run_chat()
                 success = chat_result.chat_history[-1]['content']
                 success_list.append(success)
+                import pdb 
+                pdb.set_trace()
             import numpy as np
             print(f"Success Rate: {np.sum(success_list)}/{num_games}")
 
