@@ -1,8 +1,9 @@
 import os
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 import pickle
-from helpers import register_function_lambda, get_best_candidate, is_termination_msg_generic
+from helpers import register_function_lambda, get_best_candidate, is_termination_msg_generic, MessageToolCall
 from autogen_agent import AutogenAgent
+from autogen.agentchat.contrib.capabilities import transform_messages, transforms
 
 
 class GWTAutogenAgent(AutogenAgent):
@@ -21,7 +22,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.retrieve_memory_agent = ConversableAgent(
             name="Retrieve_Memory_Agent",
             system_message="""You are the Retrieve Memory Agent. You task is ONLY to call the function `retrieve_memory` to retrieve the memory.
-            DO NOT analyze any information such as task, history, addmissible commands, guidance, etc.
+            DO NOT analyze any information such as task, history, admissible commands, guidance, etc.
             **RULES:**
             The TOOL you can only use is `retrieve_memory`.
             DO NOT call any other tools.
@@ -198,11 +199,9 @@ class GWTAutogenAgent(AutogenAgent):
                 return f"Observation: {self.obs[0]} IN_PROGRESS"
 
         # Register the execute_action function with Executor_Agent
-        register_function_lambda(
-            execute_action,
-            r"execute_action",
-            self.executor_agent
-        )
+        tool_handling = transform_messages.TransformMessages(
+            transforms=[MessageToolCall(execute_action, r"execute_action")])
+        tool_handling.add_to_agent(self.executor_agent)
 
         # Define record_memory function
         def record_guidance(guidance: str) -> str:
