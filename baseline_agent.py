@@ -6,8 +6,8 @@ from autogen_agent import AutogenAgent
 
 
 class BaselineAutogenAgent(AutogenAgent):
-    def __init__(self, env, obs, info, llm_config, log_path=None):
-        super().__init__(env, obs, info, llm_config, log_path)
+    def __init__(self, env, obs, info, llm_config, log_path=None, max_actions=50):
+        super().__init__(env, obs, info, llm_config, log_path, max_actions)
 
     def initialize_agents(self):
         self.assistant_agent = ConversableAgent(
@@ -92,6 +92,8 @@ class BaselineAutogenAgent(AutogenAgent):
             admissible_commands = list(self.info['admissible_commands'][0])
             assert len(admissible_commands) > 0
 
+            self.num_actions += 1
+
             action, action_score = get_best_candidate(suggested_action, admissible_commands)
 
             if action_score < 0.8:
@@ -102,6 +104,8 @@ class BaselineAutogenAgent(AutogenAgent):
             # time.sleep(1)
             if dones[0]:
                 return f"Observation: {self.obs[0]} SUCCESS"
+            elif self.num_actions >= self.max_actions:
+                return f"Observation: {self.obs[0]} FAILURE"
             else:
                 return f"Observation: {self.obs[0]} IN_PROGRESS"
 
@@ -110,7 +114,7 @@ class BaselineAutogenAgent(AutogenAgent):
             [self.echo_agent]
         )
 
-    def initialize_groupchat(self, max_chat_round=200):
+    def initialize_groupchat(self, max_chat_round=2000):
         self.group_chat = GroupChat(
             agents=[
                 self.assistant_agent,

@@ -85,15 +85,13 @@ if __name__ == "__main__":
 
                 ## For each set, there are `num_games` games we need to evaluate
                 num_games = alfred_env.num_games
-                max_steps = 100
                 success_list = []
 
-                num_games = 50
                 for i in range(num_games):
                     print("Initialized Environment")
 
                     obs, info = env.reset()
-                    agent = agent_class(env, obs, info, llm_config, log_path=base_path)
+                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, max_actions=50)
                     agent.update_game_no(i)
 
                     log_paths = agent.get_log_paths()

@@ -6,7 +6,7 @@ from autogen_agent import AutogenAgent
 
 
 class GWTAutogenAgent(AutogenAgent):
-    def __init__(self, env, obs, info, llm_config, log_path=None):
+    def __init__(self, env, obs, info, llm_config, log_path=None, max_actions=50):
         self.retrieve_memory_agent = None
         self.guidance_agent = None
         self.record_guidance_agent = None
@@ -15,7 +15,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.executor_agent = None
         self.echo_agent = None
 
-        super().__init__(env, obs, info, llm_config, log_path)
+        super().__init__(env, obs, info, llm_config, log_path, max_actions)
 
     def initialize_agents(self):
         # Retrieve Memory Agent
@@ -182,10 +182,11 @@ class GWTAutogenAgent(AutogenAgent):
 
         # Define execute_action as a nested function
         def execute_action(suggested_action: str) -> str:
-            print("RUNNING EXECUTE ACTION FUNCTION !!!")
             assert len(list(self.info['admissible_commands'])) == 1
             admissible_commands = list(self.info['admissible_commands'][0])
             assert len(admissible_commands) > 0
+
+            self.num_actions += 1
 
             action, action_score = get_best_candidate(suggested_action, admissible_commands)
 
@@ -208,6 +209,8 @@ class GWTAutogenAgent(AutogenAgent):
             # time.sleep(1)
             if dones[0]:
                 return f"Observation: {self.obs[0]} SUCCESS"
+            elif self.num_actions >= self.max_actions:
+                return f"Observation: {self.obs[0]} FAILURE"
             else:
                 return f"Observation: {self.obs[0]} IN_PROGRESS"
 
@@ -270,7 +273,7 @@ class GWTAutogenAgent(AutogenAgent):
             [self.echo_agent]
         )
 
-    def initialize_groupchat(self, max_chat_round=200):
+    def initialize_groupchat(self, max_chat_round=2000):
         log_paths = self.get_log_paths()
 
         def state_transition(last_speaker, groupchat):

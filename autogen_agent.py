@@ -3,13 +3,15 @@ import os
 
 # This is a template class for the Autogen Agent
 class AutogenAgent:
-    def __init__(self, env, obs, info, llm_config, log_path=None):
+    def __init__(self, env, obs, info, llm_config, log_path=None, max_actions=50):
         self.env = env
         self.obs = obs
         self.info = info
         self.llm_config = llm_config
         self.log_path = log_path
         self.game_no = 0
+        self.num_actions = 0
+        self.max_actions = max_actions
 
         self.start_agent = None
 
@@ -33,6 +35,8 @@ class AutogenAgent:
         assert self.start_agent is not None, "self.start_agent must be defined"
         assert self.group_chat_manager is not None, "self.group_chat_manager must be defined"
         assert self.group_chat is not None, "self.group_chat must be defined"
+
+        self.num_actions = 0
 
         chat_result = None
         error_message = None
