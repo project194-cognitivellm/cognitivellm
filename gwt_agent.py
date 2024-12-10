@@ -1,7 +1,7 @@
 import os
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 import pickle
-from helpers import register_function_lambda, get_best_candidate, is_termination_msg_generic
+from helpers import register_function_lambda, get_best_candidate, is_termination_msg_generic, get_echo_agent
 from autogen_agent import AutogenAgent
 
 
@@ -157,16 +157,7 @@ class GWTAutogenAgent(AutogenAgent):
             is_termination_msg=is_termination_msg_generic
         )
 
-        self.echo_agent = ConversableAgent(
-            name="Echo_Agent",
-            system_message="You are the Echo Agent. You will echo the contents of the last message sent to you ONLY IF "
-                           "it begins with the keyword \"ECHO: \". Do not send contents from anything but the last "
-                           "message, and do not include the \"ECHO: \" keyword in your output. If the keyword is not "
-                           "present, you should output nothing.",
-            llm_config=self.llm_config,
-            human_input_mode="NEVER",
-            is_termination_msg=is_termination_msg_generic
-        )
+        self.echo_agent = get_echo_agent(self.llm_config)
 
         # Agent descriptions
         self.task_agent.description = "analyzes the task and proposes a plan to accomplish the task"
@@ -175,7 +166,6 @@ class GWTAutogenAgent(AutogenAgent):
         self.record_guidance_agent.description = "records the new guidance"
         self.command_evaluation_agent.description = "evaluates the outcome of the command"
         self.executor_agent.description = "executes actions and returns observations"
-        self.echo_agent.description = "echoes the output of function calls"
 
     def register_functions(self):
         log_paths = self.get_log_paths()

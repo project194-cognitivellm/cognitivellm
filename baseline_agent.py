@@ -1,7 +1,7 @@
 import os
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 from nltk.translate.bleu_score import sentence_bleu
-from helpers import get_best_candidate, register_function_lambda, is_termination_msg_generic
+from helpers import get_best_candidate, register_function_lambda, is_termination_msg_generic, get_echo_agent
 from autogen_agent import AutogenAgent
 
 
@@ -39,16 +39,7 @@ class BaselineAutogenAgent(AutogenAgent):
             human_input_mode="NEVER"
         )
 
-        self.echo_agent = ConversableAgent(
-            name="Echo_Agent",
-            system_message="You are the Echo Agent. You will echo the contents of the last message sent to you ONLY IF "
-                           "it begins with the keyword \"ECHO: \". Do not send contents from anything but the last "
-                           "message, and do not include the \"ECHO: \" keyword in your output. If the keyword is not "
-                           "present, you should output nothing.",
-            llm_config=self.llm_config,
-            human_input_mode="NEVER",
-            is_termination_msg=is_termination_msg_generic
-        )
+        self.echo_agent = get_echo_agent(self.llm_config)
 
         self.executor_agent = ConversableAgent(
             name="Executor_Agent",
@@ -84,11 +75,11 @@ class BaselineAutogenAgent(AutogenAgent):
         self.executor_agent.description = (
             "calls execute_action with the proposed action as the argument to perform the suggested action"
         )
-        self.echo_agent.description = "reports action execution results as feedback."
         self.grounding_agent.description = (
             "provides general knowledge at the start of task when the chat begins and whenever the "
             "environment_proxy reports the same results three times in a row."
         )
+        # self.echo_agent.description = "reports action execution results as feedback."
 
         self.start_agent = self.echo_agent
 
