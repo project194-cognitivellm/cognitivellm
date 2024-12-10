@@ -96,9 +96,10 @@ class BaselineAutogenAgent(AutogenAgent):
             action, action_score = get_best_candidate(suggested_action, admissible_commands)
 
             if action_score < 0.8:
-                return f"Observation: action '{suggested_action}' is not admissible."
-
-            self.obs, scores, dones, self.info = self.env.step([action])
+                self.obs = [f"action '{suggested_action}' is not admissible."]
+                dones = [False]
+            else:
+                self.obs, scores, dones, self.info = self.env.step([action])
 
             # time.sleep(1)
             if dones[0]:

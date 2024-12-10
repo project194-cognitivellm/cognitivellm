@@ -184,9 +184,10 @@ class GWTAutogenAgent(AutogenAgent):
                 output = f"action '{suggested_action}' is not admissible.\n"
                 with open(log_paths['history_path'], "a+") as f:
                     f.write(output)
-                return f"Observation: action '{suggested_action}' is not admissible."
-
-            self.obs, scores, dones, self.info = self.env.step([action])
+                self.obs = [f"action '{suggested_action}' is not admissible."]
+                dones = [False]
+            else:
+                self.obs, scores, dones, self.info = self.env.step([action])
 
             # save the admissible commands into a txt file
             with open(log_paths['admissible_commands_path'], "w") as f:
