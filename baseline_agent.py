@@ -1,36 +1,13 @@
 import os
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 from nltk.translate.bleu_score import sentence_bleu
+from helpers import get_best_candidate, register_function_lambda, is_termination_msg_generic
+from autogen_agent import AutogenAgent
 
 
-def get_best_candidate(reference_sentence, candidate_sentences):
-    # Tokenize the reference sentence
-    reference = [reference_sentence.split()]
-    best_score = 0.0
-    best_candidate = ""
-
-    # Iterate through each candidate sentence and calculate the BLEU score
-    for candidate_sentence in candidate_sentences:
-        candidate = candidate_sentence.split()
-        bleu_score = sentence_bleu(reference, candidate)
-
-        # Update best score and best candidate if this candidate is better
-        if bleu_score > best_score:
-            best_score = bleu_score
-            best_candidate = candidate_sentence
-
-    return best_candidate
-
-
-class BaselineAutogenAgent:
-    def __init__(self, env, obs, info, llm_config):
-        self.env = env
-        self.obs = obs
-        self.info = info
-        self.llm_config = llm_config
-
-        self.initialize_agents()
-        self.register_functions()
+class BaselineAutogenAgent(AutogenAgent):
+    def __init__(self, env, obs, info, llm_config, log_path=None):
+        super().__init__(env, obs, info, llm_config, log_path)
 
     def initialize_agents(self):
         self.assistant_agent = ConversableAgent(
@@ -55,7 +32,7 @@ class BaselineAutogenAgent:
                 "I'll go to the desklamp now.] ACTION [go to desk 1]"
             ),
             llm_config=self.llm_config,
-            is_termination_msg=lambda msg: msg["content"] is not None and "SUCCESS" in msg["content"],
+            is_termination_msg=is_termination_msg_generic,
             human_input_mode="NEVER"
         )
 
@@ -63,7 +40,7 @@ class BaselineAutogenAgent:
             name="Environment Proxy",
             llm_config=False,
             human_input_mode="NEVER",
-            is_termination_msg=lambda msg: msg["content"] is not None and "SUCCESS" in msg["content"],
+            is_termination_msg=is_termination_msg_generic,
         )
 
         self.executor_agent = ConversableAgent(
@@ -71,7 +48,7 @@ class BaselineAutogenAgent:
             system_message="You call the execute_action function with the proposed action as the argument",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
-            is_termination_msg=lambda msg: msg["content"] is not None and "SUCCESS" in msg["content"],
+            is_termination_msg=is_termination_msg_generic,
         )
 
         self.grounding_agent = ConversableAgent(
@@ -82,7 +59,7 @@ class BaselineAutogenAgent:
             ),
             llm_config=self.llm_config,
             human_input_mode="NEVER",
-            is_termination_msg=lambda msg: msg["content"] is not None and "SUCCESS" in msg["content"],
+            is_termination_msg=is_termination_msg_generic,
         )
 
         self.allowed_transitions = {
@@ -103,6 +80,29 @@ class BaselineAutogenAgent:
             "call assistant_agent to generate the first plan. If the task is completed, output SUCCESS."
         )
 
+    def register_functions(self):
+        # Define execute_action as a nested function
+        def execute_action(suggested_action: str) -> str:
+            assert len(list(self.info['admissible_commands'])) == 1
+            admissible_commands = list(self.info['admissible_commands'][0])
+            assert len(admissible_commands) > 0
+
+            action, action_score = get_best_candidate(suggested_action, admissible_commands)
+
+            if action_score < 0.8:
+                return f"Observation: action '{suggested_action}' is not admissible."
+
+            self.obs, scores, dones, self.info = self.env.step([action])
+
+            # time.sleep(1)
+            if dones[0]:
+                return f"Observation: {self.obs[0]} SUCCESS"
+            else:
+                return f"Observation: {self.obs[0]} IN_PROGRESS"
+
+        register_function_lambda(execute_action, r"execute_action", self.executor_agent)
+
+    def initialize_groupchat(self, max_chat_round=200):
         self.group_chat = GroupChat(
             agents=[
                 self.assistant_agent,
@@ -121,36 +121,3 @@ class BaselineAutogenAgent:
             groupchat=self.group_chat,
             llm_config=self.llm_config,
         )
-
-    def register_functions(self):
-        # Define execute_action as a nested function
-        def execute_action(suggested_action: str) -> str:
-            assert len(list(self.info['admissible_commands'])) == 1
-            admissible_commands = list(self.info['admissible_commands'][0])
-            assert len(admissible_commands) > 0
-
-            action = get_best_candidate(suggested_action, admissible_commands)
-            self.obs, scores, dones, self.info = self.env.step([action])
-            return self.obs[0], f"Admissible Commands: {admissible_commands}, Scores: {scores[0]}, Dones: {dones[0]}"
-
-        register_function(
-            execute_action,
-            caller=self.executor_agent,
-            executor=self.environment_proxy,
-            name="execute_action",
-            description="Call this function to execute the suggested action"
-        )
-
-    def run_chat(self):
-        if isinstance(self.obs, (list, tuple)):
-            initial_message_content = self.obs[0]
-        else:
-            initial_message_content = self.obs
-
-        chat_result = self.grounding_agent.initiate_chat(
-            self.group_chat_manager,
-            message={"role": "system", "content": initial_message_content},
-            summary_method="reflection_with_llm"
-        )
-
-        return chat_result
