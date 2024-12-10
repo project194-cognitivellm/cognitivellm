@@ -53,22 +53,21 @@ class MessageToolCall:
             # While still allowing multiple calls.
             pattern = rf"{re.escape(tool_name)}\((.*?)\)"
 
-            while True:
-                match = re.search(pattern, text)
-                if not match:
-                    # No more occurrences of this tool
-                    break
-                # Extract the full matched substring
-                full_call_str = text[match.start():match.end()]
-                # Parse it
-                parsed_tool_name, args = parse_tool_call(full_call_str)
-                if parsed_tool_name == tool_name:
-                    result = func(*args)
-                    # Replace the first occurrence
-                    text = text[:match.start()] + str(result) + text[match.end():]
-                else:
-                    # If somehow parsing didn't match the tool_name, break to avoid infinite loop
-                    break
+            match = re.search(pattern, text)
+            if not match:
+                # No more occurrences of this tool
+                continue
+            # Extract the full matched substring
+            full_call_str = text[match.start():match.end()]
+            print(f"Match: {pattern, full_call_str}")
+            # Parse it
+            parsed_tool_name, args = parse_tool_call(full_call_str)
+            if parsed_tool_name == tool_name:
+                result = func(*args)
+                return result
+            else:
+                # If somehow parsing didn't match the tool_name, break to avoid infinite loop
+                raise ValueError(f"Tool name mismatch: {parsed_tool_name} != {tool_name}")
         return text
 
     def apply_transform(self, messages: List[Dict]) -> List[Dict]:
