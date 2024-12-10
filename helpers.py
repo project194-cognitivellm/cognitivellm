@@ -64,7 +64,7 @@ class MessageToolCall:
             parsed_tool_name, args = parse_tool_call(full_call_str)
             if parsed_tool_name == tool_name:
                 result = func(*args)
-                return result
+                return f"ECHO: {result}"
             else:
                 # If somehow parsing didn't match the tool_name, break to avoid infinite loop
                 raise ValueError(f"Tool name mismatch: {parsed_tool_name} != {tool_name}")
@@ -73,16 +73,16 @@ class MessageToolCall:
     def apply_transform(self, messages: List[Dict]) -> List[Dict]:
         temp_messages = copy.deepcopy(messages)
 
-        for message in temp_messages:
-            # If content is a simple string
-            if isinstance(message["content"], str):
-                message["content"] = self._transform_text_content(message["content"])
+        message = temp_messages[-1]
+        # If content is a simple string
+        if isinstance(message["content"], str):
+            message["content"] = self._transform_text_content(message["content"])
 
-            # If content is a list, iterate over text-type items
-            elif isinstance(message["content"], list):
-                for item in message["content"]:
-                    if item.get("type") == "text" and isinstance(item["text"], str):
-                        item["text"] = self._transform_text_content(item["text"])
+        # If content is a list, iterate over text-type items
+        elif isinstance(message["content"], list):
+            for item in message["content"]:
+                if item.get("type") == "text" and isinstance(item["text"], str):
+                    item["text"] = self._transform_text_content(item["text"])
 
         return temp_messages
 
@@ -90,8 +90,7 @@ class MessageToolCall:
         # Compare pre and post transformation messages for changes.
         for message, post_message in zip(pre_transform_messages, post_transform_messages):
             if message["content"] != post_message["content"]:
-                return (f"Message content changed from \n\n {message['content']}\n\n to\n\n {post_message['content']}",
-                        True)
+                return "Function call triggered", True
         return "", False
 
 

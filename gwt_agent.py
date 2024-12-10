@@ -13,6 +13,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.task_agent = None
         self.command_evaluation_agent = None
         self.executor_agent = None
+        self.echo_agent = None
 
         super().__init__(env, obs, info, llm_config, log_path)
 
@@ -83,7 +84,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.record_guidance_agent = ConversableAgent(
             name="Record_Guidance_Agent",
             system_message="""You are the Record Guidance Agent. You task is ONLY to call the function `record_guidance` to record the new guidance.
-            DO NOT analyze any information such as task, history, addmissible commands, etc. You only need to record the new guidance, not repeat the previous guidance.
+            DO NOT analyze any information such as task, history, admissible commands, etc. You only need to record the new guidance, not repeat the previous guidance.
 
             **IMPORTANT:**
             If 'No new guidance at this time.', do not call the function `record_guidance`.
@@ -156,6 +157,17 @@ class GWTAutogenAgent(AutogenAgent):
             is_termination_msg=is_termination_msg_generic
         )
 
+        self.echo_agent = ConversableAgent(
+            name="Echo_Agent",
+            system_message="You are the Echo Agent. You will echo the contents of the last message sent to you ONLY IF "
+                           "it begins with the keyword \"ECHO: \". Do not send contents from anything but the last "
+                           "message, and do not include the \"ECHO: \" keyword in your output. If the keyword is not "
+                           "present, you should output nothing.",
+            llm_config=self.llm_config,
+            human_input_mode="NEVER",
+            is_termination_msg=is_termination_msg_generic
+        )
+
         # Agent descriptions
         self.task_agent.description = "analyzes the task and proposes a plan to accomplish the task"
         self.retrieve_memory_agent.description = "retrieves the memory"
@@ -163,6 +175,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.record_guidance_agent.description = "records the new guidance"
         self.command_evaluation_agent.description = "evaluates the outcome of the command"
         self.executor_agent.description = "executes actions and returns observations"
+        self.echo_agent.description = "echoes the output of function calls"
 
     def register_functions(self):
         log_paths = self.get_log_paths()
@@ -250,6 +263,8 @@ class GWTAutogenAgent(AutogenAgent):
 
         def state_transition(last_speaker, groupchat):
             messages = groupchat.messages
+            print('TWO AGO')
+            print(messages[-2])
 
             with open(log_paths['message_path'], "wb") as f:
                 pickle.dump(messages, f)
