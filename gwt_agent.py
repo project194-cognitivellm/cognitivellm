@@ -1,30 +1,7 @@
 import os
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 import pickle
-from sentence_transformers import SentenceTransformer, util
-from helpers import register_function_lambda
-
-sentence_transformer_model = SentenceTransformer('all-MiniLM-L6-v2')
-
-
-def get_best_candidate(reference_sentence, candidate_sentences):
-    # Compute embeddings
-    target_embedding = sentence_transformer_model.encode(reference_sentence, convert_to_tensor=True)
-    command_embeddings = sentence_transformer_model.encode(candidate_sentences, convert_to_tensor=True)
-
-    # Compute cosine similarity
-    similarities = util.cos_sim(target_embedding, command_embeddings)
-
-    # Find the most similar command
-    most_similar_idx = similarities.argmax()
-    most_similar_command = candidate_sentences[most_similar_idx]
-    score = similarities.detach().cpu().numpy()[0, most_similar_idx]
-
-    return most_similar_command, score
-
-
-def is_termination_msg_generic(msg):
-    return msg["content"] is not None and ("SUCCESS" in msg["content"] or "FAILURE" in msg["content"])
+from helpers import register_function_lambda, get_best_candidate, is_termination_msg_generic
 
 
 class GWTAutogenAgent:
