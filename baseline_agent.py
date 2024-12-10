@@ -28,14 +28,14 @@ class BaselineAutogenAgent(AutogenAgent):
                 "ACTION [go to desk 1] "
                 "Example 2 (After assistant finds the desklamp at desk 1, then goes to desk 2.): "
                 "Feedback: [on the desk 2, you see a bowl 1, and a cd 3] "
-                "Your Output: THOUGHT [Now I find a bowl (1). I need to use the desklamp to look at the bowl. "
-                "I'll go to the desklamp now.] ACTION [go to desk 1]. "
-                "Note that the task is ONLY "
-                "successful when Echo_Agent outputs SUCCESS. If Echo_Agent does not output SUCCESS, you should "
-                "assume you still haven't successfully completed the task."
+                "Your Output: THOUGHT [Now I find a bowl 1. I need to take bowl 1 back to desk 1 with a desklamp. "
+                "I'll take bowl 1 first.] ACTION [take bowl 1 from desk 2]. "
+                "VERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
+                "Never assume you have successfully completed the task. Once you complete the task, the chat will end "
+                "on its own."
             ),
             llm_config=self.llm_config,
-            is_termination_msg=is_termination_msg_generic,
+            is_termination_msg=lambda msg: False,
             human_input_mode="NEVER"
         )
 
@@ -48,20 +48,21 @@ class BaselineAutogenAgent(AutogenAgent):
                            "execute_action(\"go to desk 1\").",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
-            is_termination_msg=is_termination_msg_generic,
+            is_termination_msg=lambda msg: False,
         )
 
         self.grounding_agent = ConversableAgent(
             name="Grounding_Agent",
             system_message=(
                 "You provide general knowledge at the start of task when the chat begins and whenever the "
-                "environment_proxy reports the same results three times in a row. Note that the task is ONLY "
-                "successful when Echo_Agent outputs SUCCESS. If Echo_Agent does not output SUCCESS, you should "
-                "assume you still haven't successfully completed the task."
+                "environment_proxy reports the same results three times in a row. "
+                "VERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
+                "Never assume you have successfully completed the task. Once you complete the task, the chat will end "
+                "on its own."
             ),
             llm_config=self.llm_config,
             human_input_mode="NEVER",
-            is_termination_msg=is_termination_msg_generic,
+            is_termination_msg=lambda msg: False,
         )
 
         self.allowed_transitions = {
