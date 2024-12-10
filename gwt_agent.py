@@ -232,22 +232,34 @@ class GWTAutogenAgent(AutogenAgent):
             memory_information = ""
 
             memory_information += "Task: \n"
-            with open(log_paths['task_path'], "r") as f:
-                memory_information += f.read()
+            if os.path.exists(log_paths['task_path']):
+                with open(log_paths['task_path'], "r") as f:
+                    memory_information += f.read()
+            else:
+                memory_information += "No task information found.\n"
 
             # latest 10 steps. last 10 lines
             memory_information += "\nRecent 10 steps History: \n"
-            with open(log_paths['history_path'], "r") as f:
-                for line in f.readlines()[-10:]:
-                    memory_information += line
+            if os.path.exists(log_paths['history_path']):
+                with open(log_paths['history_path'], "r") as f:
+                    for line in f.readlines()[-10:]:
+                        memory_information += line
+            else:
+                memory_information += "No history information found.\n"
 
-            memory_information += "\nAddmissible commands for current step: \n"
-            with open(log_paths['admissible_commands_path'], "r") as f:
-                memory_information += f.read()
+            if os.path.exists(log_paths['admissible_commands_path']):
+                memory_information += "\nAdmissible commands for current step: \n"
+                with open(log_paths['admissible_commands_path'], "r") as f:
+                    memory_information += f.read()
+            else:
+                memory_information += "No admissible commands information found.\n"
 
-            memory_information += "\nGuidance: \n"
-            with open(log_paths['guidance_path'], "r") as f:
-                memory_information += f.read()
+            if os.path.exists(log_paths['guidance_path']):
+                memory_information += "\nGuidance: \n"
+                with open(log_paths['guidance_path'], "r") as f:
+                    memory_information += f.read()
+            else:
+                memory_information += "No guidance information found.\n"
 
             return memory_information
 
