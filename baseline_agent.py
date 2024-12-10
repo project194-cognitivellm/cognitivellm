@@ -29,7 +29,10 @@ class BaselineAutogenAgent(AutogenAgent):
                 "Example 2 (After assistant finds the desklamp at desk 1, then goes to desk 2.): "
                 "Feedback: [on the desk 2, you see a bowl 1, and a cd 3] "
                 "Your Output: THOUGHT [Now I find a bowl (1). I need to use the desklamp to look at the bowl. "
-                "I'll go to the desklamp now.] ACTION [go to desk 1]"
+                "I'll go to the desklamp now.] ACTION [go to desk 1]. "
+                "Note that the task is ONLY "
+                "successful when Echo_Agent outputs SUCCESS. If Echo_Agent does not output SUCCESS, you should "
+                "assume you still haven't successfully completed the task."
             ),
             llm_config=self.llm_config,
             is_termination_msg=is_termination_msg_generic,
@@ -61,7 +64,9 @@ class BaselineAutogenAgent(AutogenAgent):
             name="Grounding_Agent",
             system_message=(
                 "You provide general knowledge at the start of task when the chat begins and whenever the "
-                "environment_proxy reports the same results three times in a row"
+                "environment_proxy reports the same results three times in a row. Note that the task is ONLY "
+                "successful when Echo_Agent outputs SUCCESS. If Echo_Agent does not output SUCCESS, you should "
+                "assume you still haven't successfully completed the task."
             ),
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -85,7 +90,7 @@ class BaselineAutogenAgent(AutogenAgent):
             "environment_proxy reports the same results three times in a row."
         )
 
-        self.start_agent = self.assistant_agent
+        self.start_agent = self.echo_agent
 
     def register_functions(self):
         # Define execute_action as a nested function
