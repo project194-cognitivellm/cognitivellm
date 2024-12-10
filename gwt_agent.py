@@ -255,7 +255,7 @@ class GWTAutogenAgent(AutogenAgent):
             {r"execute_action": execute_action,
              r"record_guidance": record_guidance,
              r"retrieve_memory": retrieve_memory},
-            [self.retrieve_memory_agent, self.task_agent, self.guidance_agent]
+            [self.echo_agent]
         )
 
     def initialize_groupchat(self, max_chat_round=200):
