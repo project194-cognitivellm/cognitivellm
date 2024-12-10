@@ -6,10 +6,19 @@ import os
 
 # load config
 config = generic.load_config()
-env_type = config['env']['type']  # 'AlfredTWEnv' or 'AlfredThorEnv' or 'AlfredHybrid'
+eval_path = config["general"]["evaluate"]["eval_paths"][0]
+eval_env_type = config["general"]["evaluate"]["envs"][0]
+if eval_env_type == "AlfredThorEnv":
+    controller_type = config["general"]["evaluate"]["controllers"][0]
+else:
+    controller_type = "tw"
+
+config["general"]["evaluate"]["env"]["type"] = eval_env_type
+config["dataset"]["eval_ood_data_path"] = eval_path
+config["controller"]["type"] = controller_type
 
 # setup environment
-env = getattr(environment, env_type)(config, train_eval='train')
+env = getattr(environment, config["general"]["evaluate"]["env"]["type"])(config, train_eval='eval_out_of_distribution')
 env = env.init_env(batch_size=1)
 print("Initialized Environment")
 
