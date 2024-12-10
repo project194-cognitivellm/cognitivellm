@@ -93,7 +93,7 @@ if __name__ == "__main__":
                     print("Initialized Environment")
 
                     obs, info = env.reset()
-                    agent = GWTAutogenAgent(env, obs, info, llm_config, log_path=base_path)
+                    agent = agent_class(env, obs, info, llm_config, log_path=base_path)
                     agent.update_game_no(i)
 
                     log_paths = agent.get_log_paths()
