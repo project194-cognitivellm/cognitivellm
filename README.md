@@ -69,10 +69,36 @@ Evaluation script for AutoGen on ALFWorld.
 python run_autogen.py configs/eval_config.yaml 
 ```
 
-### Loop GWT
+### Lambda Compatibility
+In order to make our code compatible with Lambda models, I needed to make a few changes to the base code 
+which worked with OpenAI models. Here are the changes:
+
+1. Update llm_config as follows:
+```sh
+API_KEY = os.environ.get("LAMBDA_API_KEY")
+BASE_URL = "https://api.lambdalabs.com/v1"
+MODEL = "llama3.1-70b-instruct-berkeley"
+
+llm_config = {
+    "timeout": 1000,
+    "cache_seed": None,
+    "max_tokens": 300,
+    "config_list": [{"model": MODEL, "api_key": API_KEY, "base_url": BASE_URL}]}
+```
+
+2. When registering tools, instead of using the library's register_function method, I used a custom method defined in
+`helpers.py`. Also, instead of registering the function to the agent which calls it, I register all functions to an
+Echo Agent which states the output of the executed function. See baseline_agent.py and gwt_agent.py for examples.
+
+You can run the code with the following command (`--baseline` can be replaced with `--gwt` to use gwt_agent.py):
+```sh
+python run_autogen_eval_loop --baseline configs/eval_config.yaml
+```
+
+### Loop GWT (Old)
 Loop GWT script for AutoGen on ALFWorld.
 ```sh
-python loop_gwt_run_autogen_eval.py configs/eval_config.yaml 
+python run_autogen_eval_loop.py configs/eval_config.yaml 
 ```
 
 Key features:
@@ -139,4 +165,6 @@ self.group_chat = GroupChat(
     send_introductions=True
 )
 ```
+
+#
 
