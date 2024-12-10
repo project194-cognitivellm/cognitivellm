@@ -36,11 +36,15 @@ class BaselineAutogenAgent(AutogenAgent):
             human_input_mode="NEVER"
         )
 
-        self.environment_proxy = ConversableAgent(
-            name="Environment Proxy",
-            llm_config=False,
+        self.echo_agent = ConversableAgent(
+            name="Echo_Agent",
+            system_message="You are the Echo Agent. You will echo the contents of the last message sent to you ONLY IF "
+                           "it begins with the keyword \"ECHO: \". Do not send contents from anything but the last "
+                           "message, and do not include the \"ECHO: \" keyword in your output. If the keyword is not "
+                           "present, you should output nothing.",
+            llm_config=self.llm_config,
             human_input_mode="NEVER",
-            is_termination_msg=is_termination_msg_generic,
+            is_termination_msg=is_termination_msg_generic
         )
 
         self.executor_agent = ConversableAgent(
@@ -64,21 +68,22 @@ class BaselineAutogenAgent(AutogenAgent):
 
         self.allowed_transitions = {
             self.assistant_agent: [self.executor_agent],
-            self.executor_agent: [self.environment_proxy],
-            self.grounding_agent: [self.executor_agent, self.assistant_agent],
-            self.environment_proxy: [self.assistant_agent, self.grounding_agent]
+            self.executor_agent: [self.echo_agent],
+            self.grounding_agent: [self.assistant_agent],
+            self.echo_agent: [self.assistant_agent, self.grounding_agent]
         }
 
         self.assistant_agent.description = "generates plans and makes action decisions to solve the task"
         self.executor_agent.description = (
             "calls execute_action with the proposed action as the argument to perform the suggested action"
         )
-        self.environment_proxy.description = "reports action execution results as feedback."
+        self.echo_agent.description = "reports action execution results as feedback."
         self.grounding_agent.description = (
             "provides general knowledge at the start of task when the chat begins and whenever the "
-            "environment_proxy reports the same results three times in a row. If it is the start of the task, "
-            "call assistant_agent to generate the first plan. If the task is completed, output SUCCESS."
+            "environment_proxy reports the same results three times in a row."
         )
+
+        self.start_agent = self.assistant_agent
 
     def register_functions(self):
         # Define execute_action as a nested function
@@ -100,7 +105,10 @@ class BaselineAutogenAgent(AutogenAgent):
             else:
                 return f"Observation: {self.obs[0]} IN_PROGRESS"
 
-        register_function_lambda(execute_action, r"execute_action", self.executor_agent)
+        register_function_lambda(
+            {r'execute_action': execute_action},
+            [self.echo_agent]
+        )
 
     def initialize_groupchat(self, max_chat_round=200):
         self.group_chat = GroupChat(
@@ -108,7 +116,7 @@ class BaselineAutogenAgent(AutogenAgent):
                 self.assistant_agent,
                 self.executor_agent,
                 self.grounding_agent,
-                self.environment_proxy
+                self.echo_agent
             ],
             messages=[],
             allowed_or_disallowed_speaker_transitions=self.allowed_transitions,
