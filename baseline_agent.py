@@ -49,7 +49,9 @@ class BaselineAutogenAgent(AutogenAgent):
 
         self.executor_agent = ConversableAgent(
             name="Executor_Agent",
-            system_message="You call the execute_action function with the proposed action as the argument",
+            system_message="You call the execute_action function with the proposed action as the argument. For "
+                           "example, if the proposed action if ACTION[go to desk 1], you should output "
+                           "execute_action(\"go to desk 1\").",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=is_termination_msg_generic,
