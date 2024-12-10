@@ -263,8 +263,6 @@ class GWTAutogenAgent(AutogenAgent):
 
         def state_transition(last_speaker, groupchat):
             messages = groupchat.messages
-            print('TWO AGO')
-            print(messages[-2])
 
             with open(log_paths['message_path'], "wb") as f:
                 pickle.dump(messages, f)
@@ -272,14 +270,14 @@ class GWTAutogenAgent(AutogenAgent):
             if last_speaker is self.start_agent:
                 next_speaker = self.task_agent
             elif last_speaker is self.retrieve_memory_agent:
-                next_speaker = self.guidance_agent
+                next_speaker = self.echo_agent
             elif last_speaker is self.guidance_agent:
                 if "NO NEW GUIDANCE" in messages[-1]["content"]:
                     next_speaker = self.task_agent
                 else:
                     next_speaker = self.record_guidance_agent
             elif last_speaker is self.record_guidance_agent:
-                next_speaker = self.task_agent
+                next_speaker = self.echo_agent
             elif last_speaker is self.task_agent:
                 next_speaker = self.command_evaluation_agent
             elif last_speaker is self.command_evaluation_agent:
@@ -288,7 +286,14 @@ class GWTAutogenAgent(AutogenAgent):
                 else:
                     next_speaker = self.executor_agent
             elif last_speaker is self.executor_agent:
-                next_speaker = self.retrieve_memory_agent
+                next_speaker = self.echo_agent
+            elif last_speaker is self.echo_agent:
+                if messages[-2]["name"] == "Retrieve_Memory_Agent":
+                    next_speaker = self.guidance_agent
+                if messages[-2]["name"] == "Record_Guidance_Agent":
+                    next_speaker = self.task_agent
+                if messages[-2]["name"] == "Executor_Agent":
+                    next_speaker = self.retrieve_memory_agent
             else:
                 raise ValueError(f"Unknown speaker: {last_speaker}")
 
@@ -308,6 +313,7 @@ class GWTAutogenAgent(AutogenAgent):
                 self.task_agent,
                 self.command_evaluation_agent,
                 self.executor_agent,
+                self.echo_agent
             ],
             messages=[],
             speaker_selection_method=state_transition,
