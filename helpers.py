@@ -136,3 +136,4 @@ def get_echo_agent(llm_config):
         is_termination_msg=is_termination_msg_generic
     )
     echo_agent.description = "echoes the output of function calls."
+    return echo_agent
