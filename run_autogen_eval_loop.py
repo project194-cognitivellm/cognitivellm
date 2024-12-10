@@ -32,7 +32,7 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def main():
+if __name__ == "__main__":
     args = parse_arguments()
     # Determine which agent to use
     if args.baseline:
@@ -226,3 +226,5 @@ def main():
                         f.write(f"Chat Round List: {chat_round_list}\n")
 
                 print(f"Success Rate: {np.sum(success_list)}/{num_games}")
+
+
