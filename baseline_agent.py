@@ -102,11 +102,11 @@ class BaselineAutogenAgent(AutogenAgent):
 
             # time.sleep(1)
             if dones[0]:
-                return f"Observation: {self.obs[0]} SUCCESS"
+                return f"Observation: {self.obs[0]} SUCCESS\nActions Left: {self.max_actions - self.num_actions}"
             elif self.num_actions >= self.max_actions:
-                return f"Observation: {self.obs[0]} FAILURE"
+                return f"Observation: {self.obs[0]} FAILURE\nActions Left: {self.max_actions - self.num_actions}"
             else:
-                return f"Observation: {self.obs[0]} IN_PROGRESS"
+                return f"Observation: {self.obs[0]} IN_PROGRESS\nActions Left: {self.max_actions - self.num_actions}"
 
         register_function_lambda(
             {r'execute_action': execute_action},
@@ -124,7 +124,7 @@ class BaselineAutogenAgent(AutogenAgent):
             messages=[],
             allowed_or_disallowed_speaker_transitions=self.allowed_transitions,
             speaker_transitions_type="allowed",
-            max_round=50,
+            max_round=max_chat_round,
             send_introductions=True
         )
 

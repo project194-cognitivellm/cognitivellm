@@ -91,7 +91,7 @@ if __name__ == "__main__":
                     print("Initialized Environment")
 
                     obs, info = env.reset()
-                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, max_actions=50)
+                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, max_actions=35)
                     agent.update_game_no(i)
 
                     log_paths = agent.get_log_paths()
