@@ -1,6 +1,5 @@
 import re
 import copy
-import pprint
 
 from typing import Dict, List, Tuple
 from autogen.agentchat.contrib.capabilities import transform_messages, transforms
@@ -39,9 +38,7 @@ class MessageToolCall:
         for message in temp_messages:
             if isinstance(message["content"], str):
                 if re.match(self.pattern, message["content"]):
-                    print("Pattern match")
                     tool_name, param = parse_tool_call(message["content"])
-                    print(f"tool name = {tool_name}, param = {param}")
                     # result = tool_name(param)
                     message["content"] = self.function(param)  # TOOL CALL !!
             elif isinstance(message["content"], list):
@@ -49,7 +46,6 @@ class MessageToolCall:
                     if item["type"] == "text":
                         if re.match(self.pattern, item["text"]):
                             item["text"] = self.function(message["content"])  # TOOL CALL !!
-        print(temp_messages)
         return temp_messages
 
     def get_logs(self, pre_transform_messages: List[Dict], post_transform_messages: List[Dict]) -> Tuple[str, bool]:
