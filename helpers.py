@@ -59,7 +59,6 @@ class MessageToolCall:
                 continue
             # Extract the full matched substring
             full_call_str = text[match.start():match.end()]
-            print(f"Match: {pattern, full_call_str}")
             # Parse it
             parsed_tool_name, args = parse_tool_call(full_call_str)
             if parsed_tool_name == tool_name:
