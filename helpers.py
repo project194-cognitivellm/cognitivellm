@@ -38,8 +38,11 @@ class MessageToolCall:
 
         for message in temp_messages:
             if isinstance(message["content"], str):
+                print(f"checking message {message['content']} for tool call")
                 for pattern, function in self.tool_dict.items():
+                    print(f"checking against pattern {pattern}")
                     if re.match(pattern, message["content"]):
+                        print(f"PASS")
                         tool_name, param = parse_tool_call(message["content"])
                         # result = tool_name(param)
                         message["content"] = function(param)  # TOOL CALL !!

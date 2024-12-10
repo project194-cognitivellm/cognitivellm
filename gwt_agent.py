@@ -169,6 +169,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         # Define execute_action as a nested function
         def execute_action(suggested_action: str) -> str:
+            print("RUNNING EXECUTE ACTION FUNCTION !!!")
             assert len(list(self.info['admissible_commands'])) == 1
             admissible_commands = list(self.info['admissible_commands'][0])
             assert len(admissible_commands) > 0
@@ -241,7 +242,7 @@ class GWTAutogenAgent(AutogenAgent):
             {r"execute_action": execute_action,
              r"record_guidance": record_guidance,
              r"retrieve_memory": retrieve_memory},
-            [self.executor_agent, self.task_agent, self.guidance_agent]
+            [self.executor_agent, self.retrieve_memory_agent, self.task_agent, self.guidance_agent]
         )
 
     def initialize_groupchat(self, max_chat_round=200):
