@@ -1,13 +1,12 @@
 import os
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
-from autogen.agentchat.contrib.capabilities import transform_messages, transforms
 from nltk.translate.bleu_score import sentence_bleu
 import numpy as np
 import time
 from datetime import datetime
 import pickle
 from sentence_transformers import SentenceTransformer, util
-from helpers import MessageToolCall
+from helpers import register_function_lambda
 
 sentence_transformer_model = SentenceTransformer('all-MiniLM-L6-v2')
 
@@ -238,17 +237,12 @@ class GWTAutogenAgent:
             else:
                 return f"Observation: {self.obs[0]} IN_PROGRESS"
 
-        # # Register the execute_action function with Executor_Agent
-        # register_function(
-        #     execute_action,
-        #     caller=self.executor_agent,  # Executor_Agent has llm_config=True
-        #     executor=self.executor_agent,  # Executor_Agent handles execution
-        #     name="execute_action",
-        #     description="Execute the action in the environment and return the observation"
-        # )
-
-        tool_handling = transform_messages.TransformMessages(transforms=[MessageToolCall(execute_action)])
-        tool_handling.add_to_agent(self.executor_agent)
+        # Register the execute_action function with Executor_Agent
+        register_function_lambda(
+            execute_action,
+            r"execute_action",
+            self.executor_agent
+        )
 
         # Define record_memory function
         def record_guidance(guidance: str) -> str:
@@ -267,12 +261,10 @@ class GWTAutogenAgent:
             return "Guidance recorded."
 
         # Register the record_memory function with Memory_Agent
-        register_function(
+        register_function_lambda(
             record_guidance,
-            caller=self.record_guidance_agent,  # Record_Guidance_Agent has llm_config=True
-            executor=self.record_guidance_agent,  # Record_Guidance_Agent handles execution
-            name="record_guidance",
-            description="Record guidance learned from history"
+            r"record_guidance",
+            self.record_guidance_agent
         )
 
         # Define retrieve_memory function, return all the content in the memory.txt file
@@ -300,12 +292,10 @@ class GWTAutogenAgent:
             return memory_information
 
         # Register the retrieve_memory function with Retrieve_Memory_Agent
-        register_function(
+        register_function_lambda(
             retrieve_memory,
-            caller=self.retrieve_memory_agent,  # Retrieve_Memory_Agent has llm_config=True
-            executor=self.retrieve_memory_agent,  # Retrieve_Memory_Agent handles execution
-            name="retrieve_memory",
-            description="Retrieve the memory"
+            r"retrieve_memory",
+            self.retrieve_memory_agent
         )
 
     def initialize_groupchat(self, max_chat_round=200):

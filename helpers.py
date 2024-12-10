@@ -25,9 +25,9 @@ def parse_tool_call(tool_call_string):
 
 # The transform must adhere to transform_messages.MessageTransform protocol.
 class MessageToolCall:
-    def __init__(self, tool):
+    def __init__(self, tool, pattern):
         # PATTERN TO MATCH TOOL CALL NAME.
-        self.pattern = r"execute_action"
+        self.pattern = pattern
         self.forecast = "Sunny with a chance of shower"
         if not callable(tool):
             raise ValueError("The input must be a callable python function.")
@@ -54,3 +54,9 @@ class MessageToolCall:
 
     def get_logs(self, pre_transform_messages: List[Dict], post_transform_messages: List[Dict]) -> Tuple[str, bool]:
         return "", False
+
+
+def register_function_lambda(tool, tool_pattern, caller_agent):
+    tool_handling = transform_messages.TransformMessages(
+        transforms=[MessageToolCall(tool, tool_pattern)])
+    tool_handling.add_to_agent(caller_agent)
