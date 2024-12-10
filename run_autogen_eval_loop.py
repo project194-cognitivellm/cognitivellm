@@ -11,7 +11,10 @@ from gwt_agent import GWTAutogenAgent
 
 # load config
 config = generic.load_config()
-API_KEY = os.environ.get("OPENAI_API_KEY")
+API_KEY = os.environ.get("LAMBDA_API_KEY")
+BASE_URL = "https://api.lambdalabs.com/v1"
+MODEL = "llama3.1-70b-instruct-berkeley"
+print(MODEL, BASE_URL, API_KEY)
 
 eval_paths = config["general"]["evaluate"]["eval_paths"]
 eval_envs = config["general"]["evaluate"]["envs"]
@@ -32,7 +35,7 @@ llm_config = {
     "cache_seed": None,
     # "temperature": 1,
     "max_tokens": 300,
-    "config_list": [{"model": "gpt-4o-mini", "api_key": API_KEY}]}
+    "config_list": [{"model": MODEL, "api_key": API_KEY, "base_url": BASE_URL}]}
 
 for eval_env_type in eval_envs:
     for controller_type in (controllers if eval_env_type == "AlfredThorEnv" else ["tw"]):
@@ -70,7 +73,7 @@ for eval_env_type in eval_envs:
 
                 initial_message_content += f"Task: {task_description}\n"
 
-                with open(log_paths['history'], "w") as f:
+                with open(log_paths['history_path'], "w") as f:
                     f.write(f"action: [None] observation: [{initial_observation}]\n")
 
                 initial_message_content += f"Observation: {initial_observation}\n"
