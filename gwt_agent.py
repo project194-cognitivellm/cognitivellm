@@ -1,11 +1,13 @@
 import os
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
+from autogen.agentchat.contrib.capabilities import transform_messages, transforms
 from nltk.translate.bleu_score import sentence_bleu
 import numpy as np
 import time
 from datetime import datetime
 import pickle
 from sentence_transformers import SentenceTransformer, util
+from helpers import MessageToolCall
 
 sentence_transformer_model = SentenceTransformer('all-MiniLM-L6-v2')
 
@@ -236,14 +238,17 @@ class GWTAutogenAgent:
             else:
                 return f"Observation: {self.obs[0]} IN_PROGRESS"
 
-        # Register the execute_action function with Executor_Agent
-        register_function(
-            execute_action,
-            caller=self.executor_agent,  # Executor_Agent has llm_config=True
-            executor=self.executor_agent,  # Executor_Agent handles execution
-            name="execute_action",
-            description="Execute the action in the environment and return the observation"
-        )
+        # # Register the execute_action function with Executor_Agent
+        # register_function(
+        #     execute_action,
+        #     caller=self.executor_agent,  # Executor_Agent has llm_config=True
+        #     executor=self.executor_agent,  # Executor_Agent handles execution
+        #     name="execute_action",
+        #     description="Execute the action in the environment and return the observation"
+        # )
+
+        tool_handling = transform_messages.TransformMessages(transforms=[MessageToolCall(execute_action)])
+        tool_handling.add_to_agent(self.executor_agent)
 
         # Define record_memory function
         def record_guidance(guidance: str) -> str:

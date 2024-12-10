@@ -14,6 +14,12 @@ config = generic.load_config()
 API_KEY = os.environ.get("LAMBDA_API_KEY")
 BASE_URL = "https://api.lambdalabs.com/v1"
 MODEL = "llama3.1-70b-instruct-berkeley"
+
+llm_config = {
+    "timeout": 1000,
+    "cache_seed": None,
+    "max_tokens": 300,
+    "config_list": [{"model": MODEL, "api_key": API_KEY, "base_url": BASE_URL}]}
 print(MODEL, BASE_URL, API_KEY)
 
 eval_paths = config["general"]["evaluate"]["eval_paths"]
@@ -29,13 +35,6 @@ os.makedirs(base_path, exist_ok=True)
 
 result_list_path = os.path.join(base_path, "result_list.txt")
 chat_round_list = []
-
-llm_config = {
-    "timeout": 1000,
-    "cache_seed": None,
-    # "temperature": 1,
-    "max_tokens": 300,
-    "config_list": [{"model": MODEL, "api_key": API_KEY, "base_url": BASE_URL}]}
 
 for eval_env_type in eval_envs:
     for controller_type in (controllers if eval_env_type == "AlfredThorEnv" else ["tw"]):
