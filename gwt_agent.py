@@ -1,9 +1,8 @@
 import os
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 import pickle
-from helpers import register_function_lambda, get_best_candidate, is_termination_msg_generic, MessageToolCall
+from helpers import register_function_lambda, get_best_candidate, is_termination_msg_generic
 from autogen_agent import AutogenAgent
-from autogen.agentchat.contrib.capabilities import transform_messages, transforms
 
 
 class GWTAutogenAgent(AutogenAgent):
@@ -198,11 +197,6 @@ class GWTAutogenAgent(AutogenAgent):
             else:
                 return f"Observation: {self.obs[0]} IN_PROGRESS"
 
-        # Register the execute_action function with Executor_Agent
-        tool_handling = transform_messages.TransformMessages(
-            transforms=[MessageToolCall(execute_action, r"execute_action")])
-        tool_handling.add_to_agent(self.executor_agent)
-
         # Define record_memory function
         def record_guidance(guidance: str) -> str:
 
@@ -218,13 +212,6 @@ class GWTAutogenAgent(AutogenAgent):
 
             # time.sleep(1)
             return "Guidance recorded."
-
-        # Register the record_memory function with Memory_Agent
-        register_function_lambda(
-            record_guidance,
-            r"record_guidance",
-            self.record_guidance_agent
-        )
 
         # Define retrieve_memory function, return all the content in the memory.txt file
         def retrieve_memory() -> str:
@@ -250,11 +237,11 @@ class GWTAutogenAgent(AutogenAgent):
 
             return memory_information
 
-        # Register the retrieve_memory function with Retrieve_Memory_Agent
         register_function_lambda(
-            retrieve_memory,
-            r"retrieve_memory",
-            self.retrieve_memory_agent
+            {r"execute_action": execute_action,
+             r"record_guidance": record_guidance,
+             r"retrieve_memory": retrieve_memory},
+            [self.executor_agent, self.task_agent, self.guidance_agent]
         )
 
     def initialize_groupchat(self, max_chat_round=200):
