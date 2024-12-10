@@ -12,6 +12,7 @@ class AutogenAgent:
         self.game_no = 0
         self.num_actions = 0
         self.max_actions = max_actions
+        self.success = False
 
         self.start_agent = None
 
@@ -37,6 +38,7 @@ class AutogenAgent:
         assert self.group_chat is not None, "self.group_chat must be defined"
 
         self.num_actions = 0
+        self.success = False
 
         chat_result = None
         error_message = None

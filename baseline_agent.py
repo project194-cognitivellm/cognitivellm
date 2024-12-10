@@ -97,12 +97,13 @@ class BaselineAutogenAgent(AutogenAgent):
 
             if action_score < 0.8:
                 self.obs = [f"action '{suggested_action}' is not admissible."]
-                dones = [False]
+                self.success = False
             else:
                 self.obs, scores, dones, self.info = self.env.step([action])
+                self.success = dones[0]
 
             # time.sleep(1)
-            if dones[0]:
+            if self.success:
                 return f"Observation: {self.obs[0]}\nTask Status: SUCCESS\nActions Left: {self.max_actions - self.num_actions}"
             elif self.num_actions >= self.max_actions:
                 return f"Observation: {self.obs[0]}\nTask Status: FAILURE\nActions Left: {self.max_actions - self.num_actions}"

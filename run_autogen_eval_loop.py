@@ -133,47 +133,8 @@ if __name__ == "__main__":
                         with open(log_paths['error_message_path'], "a") as f:
                             f.write(f"Run Chat: {error_message}\n")
 
-                    print("Resume chat")
-                    max_num_of_resume = 5
-
-                    if chat_result is None:
-                        for i in range(max_num_of_resume):
-                            time.sleep(10)
-
-                            with open(log_paths['message_path'], "rb") as f:
-                                last_message = pickle.load(f)
-
-                            remove_index = 0
-                            for j in range(len(last_message)):
-                                if last_message[-j - 1]['role'] == 'user':
-                                    if last_message[-j - 1]['name'] == 'chat_manager' or last_message[-j - 1][
-                                        'name'] == 'Task_Agent':
-                                        remove_index = - j
-                                        break
-
-                            last_message = last_message[:len(last_message) + remove_index]
-
-                            chat_result, error_message = agent.resume_chat(last_message)
-
-                            if chat_result is not None:
-                                break
-
-                            if error_message is not None:
-                                with open(log_paths['error_message_path'], "a") as f:
-                                    f.write(f"Resume Chat {i + 1}: {error_message}\n")
-
                     if chat_result is not None:
                         if "chat_history" in chat_result.__dict__.keys() and len(chat_result.chat_history) > 0:
-
-                            # Two cases: if last message is tool calls, "content" is None.
-                            # Otherwise, "content" is not None.
-                            # When it is tool calls, success should be  False.
-                            # The game will not completed by tool calls.
-                            if chat_result.chat_history[-1]['content'] is not None:
-                                success = "SUCCESS" in chat_result.chat_history[-1]['content']
-                            else:
-                                success = False
-
                             # message is a list of dictionaries, record every key-value pair into a readable file.
                             # if there is "name" and "role" in the message, record them first.
                             with open(log_paths['chat_history_path'], "w") as f:
@@ -197,8 +158,6 @@ if __name__ == "__main__":
                         else:
                             chat_round_list.append(-1)
 
-                            success = False
-
                             with open(log_paths['chat_history_path'], "w") as f:
                                 f.write(f"Error Message: no chat history in chat result\n")
 
@@ -207,10 +166,10 @@ if __name__ == "__main__":
                     else:
                         chat_round_list.append(-1)
 
-                        success = False
-
                     # exit()
 
+                    success = agent.success
+                    print(f'Success: {success}')
                     success_list.append(success)
 
                     # save success and chat_round into a txt file
