@@ -49,7 +49,7 @@ if __name__ == "__main__":
     with open(args.config_file) as reader:
         config = yaml.safe_load(reader)
 
-    wandb.init(project="cognitive-agents")
+    wandb.init(project="cognitive-agents", entity="cog-llm")
 
     API_KEY = os.environ.get("LAMBDA_API_KEY")
     BASE_URL = "https://api.lambdalabs.com/v1"
