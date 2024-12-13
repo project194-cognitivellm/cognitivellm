@@ -11,6 +11,7 @@ import alfworld.agents.modules.generic as generic
 import alfworld.agents.environment as environment
 from gwt_agent import GWTAutogenAgent
 from baseline_agent import BaselineAutogenAgent
+import wandb    # Install wandb, use wandb login in cmd, and then run the code
 
 
 def parse_arguments():
@@ -47,6 +48,8 @@ if __name__ == "__main__":
     # Load the config file
     with open(args.config_file) as reader:
         config = yaml.safe_load(reader)
+
+    wandb.init(project="cognitive-agents")
 
     API_KEY = os.environ.get("LAMBDA_API_KEY")
     BASE_URL = "https://api.lambdalabs.com/v1"
@@ -172,6 +175,8 @@ if __name__ == "__main__":
                     print(f'Success: {success}')
                     success_list.append(success)
 
+                    wandb.log({"success": success, "success_rate": np.sum(success_list) / len(success_list)})
+
                     # save success and chat_round into a txt file
                     with open(log_paths['result_path'], "w") as f:
                         f.write(f"Success: {success}\n")
@@ -184,4 +189,4 @@ if __name__ == "__main__":
 
                 print(f"Success Rate: {np.sum(success_list)}/{num_games}")
 
-
+wandb.finish()
