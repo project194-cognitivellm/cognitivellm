@@ -1,4 +1,6 @@
 import os
+import re
+
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 from nltk.translate.bleu_score import sentence_bleu
 from helpers import get_best_candidate, register_function_lambda, is_termination_msg_generic, get_echo_agent
@@ -32,7 +34,7 @@ class BaselineAutogenAgent(AutogenAgent):
                 "I'll take bowl 1 first.] ACTION [take bowl 1 from desk 2]. "
                 "VERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
                 "Never assume you have successfully completed the task. Once you complete the task, the chat will end "
-                "on its own."
+                "on its own. If you do not provide an action suggestion, you will fail the task."
             ),
             llm_config=self.llm_config,
             is_termination_msg=lambda msg: False,
@@ -44,11 +46,12 @@ class BaselineAutogenAgent(AutogenAgent):
         self.executor_agent = ConversableAgent(
             name="Executor_Agent",
             system_message="You call the execute_action function with the proposed action as the argument. For "
-                           "example, if the proposed action if ACTION[go to desk 1], you should output "
-                           "execute_action(\"go to desk 1\").",
+                           "example, if the proposed action is ACTION[go to desk 1], you should output "
+                           "execute_action(\"go to desk 1\"). You must include a call to the execute_action function "
+                           "in your output, or you will fail the task.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
-            is_termination_msg=lambda msg: False,
+            is_termination_msg=lambda msg: not re.search(rf"{re.escape(r'execute_action')}\((.*?)\)", msg),
         )
 
         self.grounding_agent = ConversableAgent(
