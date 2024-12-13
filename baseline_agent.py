@@ -46,13 +46,7 @@ class BaselineAutogenAgent(AutogenAgent):
         )
 
         def executor_agent_termination_msg(msg):
-            if msg["content"] is not None and msg["from"] == "Executor_Agent":
-                match = re.search(r"execution_action\((.*?)\)", msg["content"])
-                if match is None:
-                    print("Executor Agent Failed:", msg["content"])
-                return match is None
-            else:
-                return False
+            return msg["name"] == "Executor_Agent" and msg["content"] is not None and msg["content"][:5] != "ECHO:"
 
         self.echo_agent = get_echo_agent(self.llm_config,
                                          additional_termination_criteria=[executor_agent_termination_msg])
