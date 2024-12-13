@@ -51,7 +51,7 @@ class BaselineAutogenAgent(AutogenAgent):
                            "in your output, or you will fail the task.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
-            is_termination_msg=lambda msg: not re.search(rf"{re.escape(r'execute_action')}\((.*?)\)", msg),
+            is_termination_msg=lambda msg: msg["content"] is not None and not re.search(r"execute_action\((.*?)\)", msg["content"]),
         )
 
         self.grounding_agent = ConversableAgent(
