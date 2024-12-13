@@ -1,6 +1,5 @@
 import os
 import re
-
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 from nltk.translate.bleu_score import sentence_bleu
 from helpers import get_best_candidate, register_function_lambda, is_termination_msg_generic, get_echo_agent
@@ -10,6 +9,11 @@ from autogen_agent import AutogenAgent
 class BaselineAutogenAgent(AutogenAgent):
     def __init__(self, env, obs, info, llm_config, log_path=None, max_actions=50):
         super().__init__(env, obs, info, llm_config, log_path, max_actions)
+
+        self.assistant_agent = None
+        self.executor_agent = None
+        self.grounding_agent = None
+        self.echo_agent = None
 
     def initialize_agents(self):
         self.assistant_agent = ConversableAgent(
@@ -41,16 +45,17 @@ class BaselineAutogenAgent(AutogenAgent):
             human_input_mode="NEVER"
         )
 
-        self.echo_agent = get_echo_agent(self.llm_config)
-
         def executor_agent_termination_msg(msg):
-            if msg["content"] is not None:
+            if msg["content"] is not None and msg["from"] == "Executor_Agent":
                 match = re.search(r"execution_action\((.*?)\)", msg["content"])
                 if match is None:
                     print("Executor Agent Failed:", msg["content"])
                 return match is None
             else:
                 return False
+
+        self.echo_agent = get_echo_agent(self.llm_config,
+                                         additional_termination_criteria=[executor_agent_termination_msg])
 
         self.executor_agent = ConversableAgent(
             name="Executor_Agent",
@@ -60,7 +65,7 @@ class BaselineAutogenAgent(AutogenAgent):
                            "in your output, or you will fail the task.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
-            is_termination_msg=executor_agent_termination_msg,
+            is_termination_msg=lambda msg: False,
         )
 
         self.grounding_agent = ConversableAgent(

@@ -123,7 +123,14 @@ def is_termination_msg_generic(msg):
     return msg["content"] is not None and ("SUCCESS" in msg["content"] or "FAILURE" in msg["content"])
 
 
-def get_echo_agent(llm_config):
+def get_echo_agent(llm_config, additional_termination_criteria=None):
+    if additional_termination_criteria is None:
+        additional_termination_criteria = []
+
+    def termination_criteria(msg):
+        criterion = is_termination_msg_generic(msg)
+        return criterion or any(criteria(msg) for criteria in additional_termination_criteria)
+
     echo_agent = ConversableAgent(
         name="Echo_Agent",
         system_message="You are the Echo Agent. You will echo the contents of the last message sent to you ONLY IF "
@@ -133,7 +140,7 @@ def get_echo_agent(llm_config):
                        "\"ECHO: \" in the last message, simply output \"No function ran.\".",
         llm_config=llm_config,
         human_input_mode="NEVER",
-        is_termination_msg=is_termination_msg_generic
+        is_termination_msg=termination_criteria,
     )
     echo_agent.description = "echoes the output of function calls."
     return echo_agent
