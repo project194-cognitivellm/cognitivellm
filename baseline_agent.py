@@ -43,6 +43,15 @@ class BaselineAutogenAgent(AutogenAgent):
 
         self.echo_agent = get_echo_agent(self.llm_config)
 
+        def executor_agent_termination_msg(msg):
+            if msg["content"] is not None:
+                match = re.search(r"execution_action\((.*?)\)", msg["content"])
+                if match is None:
+                    print("Executor Agent Failed:", msg["content"])
+                return match is None
+            else:
+                return False
+
         self.executor_agent = ConversableAgent(
             name="Executor_Agent",
             system_message="You call the execute_action function with the proposed action as the argument. For "
@@ -51,7 +60,7 @@ class BaselineAutogenAgent(AutogenAgent):
                            "in your output, or you will fail the task.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
-            is_termination_msg=lambda msg: msg["content"] is not None and not re.search(r"execute_action\((.*?)\)", msg["content"]),
+            is_termination_msg=executor_agent_termination_msg,
         )
 
         self.grounding_agent = ConversableAgent(
