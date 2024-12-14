@@ -3,7 +3,7 @@ from autogen import ConversableAgent, register_function, GroupChat, GroupChatMan
 import pickle
 from helpers import register_function_lambda, get_best_candidate, is_termination_msg_generic, get_echo_agent
 from autogen_agent import AutogenAgent
-
+import copy
 
 class GWTAutogenAgent(AutogenAgent):
     def __init__(self, env, obs, info, llm_config, log_path, game_no, max_actions=50, args=None):
@@ -160,7 +160,10 @@ class GWTAutogenAgent(AutogenAgent):
             is_termination_msg=is_termination_msg_generic
         )
 
-        self.echo_agent = get_echo_agent(self.llm_config)
+
+        llm_config = copy.deepcopy(self.llm_config)
+        llm_config['max_tokens'] = 1000
+        self.echo_agent = get_echo_agent(llm_config)
 
         # Agent descriptions
         self.task_agent.description = "analyzes the task and proposes a plan to accomplish the task"
