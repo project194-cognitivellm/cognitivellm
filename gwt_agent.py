@@ -1,180 +1,146 @@
 import os
+import re
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
-import pickle
-from helpers import register_function_lambda, get_best_candidate, is_termination_msg_generic, get_echo_agent
+from nltk.translate.bleu_score import sentence_bleu
+from helpers import get_best_candidate, register_function_lambda, is_termination_msg_generic, get_echo_agent
 from autogen_agent import AutogenAgent
-import copy
+#from transformers import pipeline
 
 class GWTAutogenAgent(AutogenAgent):
-    def __init__(self, env, obs, info, llm_config, log_path, game_no, max_actions=50, args=None):
-        super().__init__(env, obs, info, llm_config, log_path, game_no, max_actions, args)
-        self.retrieve_memory_agent = None
-        self.guidance_agent = None
-        self.record_guidance_agent = None
-        self.task_agent = None
-        self.command_evaluation_agent = None
-        self.executor_agent = None
-        self.echo_agent = None
-        
-        self.args = args
+    def __init__(self, env, obs, info, llm_config, log_path=None, max_actions=50):
+        super().__init__(env, obs, info, llm_config, log_path, max_actions)
 
-        self.initialize_autogen()
+        self.planning_agent = None
+        self.executor_agent = None
+        self.imagination_agent = None
+        self.echo_agent = None
+        self.echo_agent2 = None
+        self.conscious_agent = None
+        self.memory_retrieval_agent = None
+
+        self.narrative_state = ""
+        #self.merge_pipeline = pipeline("text2text-generation", model="t5-small")
 
     def initialize_agents(self):
-        # Retrieve Memory Agent
-        self.retrieve_memory_agent = ConversableAgent(
-            name="Retrieve_Memory_Agent",
-            system_message="""You are the Retrieve Memory Agent. You task is ONLY to call the function `retrieve_memory` to retrieve the memory.
-            DO NOT analyze any information such as task, history, admissible commands, guidance, etc.
-            **RULES:**
-            The TOOL you can only use is `retrieve_memory`.
-            DO NOT call any other tools.
-            You can only use `retrieve_memory` once per step.            
-            """,
+        self.planning_agent = ConversableAgent(
+            name="Planning_Agent",
+            system_message=(
+                "You are Planning_Agent, your goal is to optimally solve the given task by formulating and reformulating an action plan. "
+                "You must formulate your plan by evaluating all currently admissible actions and proposing one of them. "
+                "The task is guaranteed to be solvable. You will receive partial information about the actual or possible outcome of attempting the "
+                "execution of your proposed action. Use the received information as feedback to refine your strategy, and avoid repetitive behavior. "
+                "Always respond using this strict format:\n"
+                "THOUGHT: [Your reasoning, observations, and next steps]\n"
+                "ACTION: [Proposed action]\n\n"
+                "Example 1: "
+                "Task Description: [You are in the middle of a room. Looking quickly around you, you see a bed 1,"
+                " a desk 2, a desk 1, a safe 1, a drawer 2, a drawer 1, a shelf 3, a shelf 2, and a shelf 1. "
+                "Your task is to: look at bowl under the desklamp.]"
+                "Your Output: THOUGHT [First, I need to find a bowl. A bowl is more likely to appear in desk "
+                "(1-2), drawer (1-2), shelf (1-3), bed (1). Then I need to find and use a desklamp.] "
+                "ACTION [go to desk 1]"
+                "Example 2 (After you find the desklamp at desk 1, then goes to desk 2.): "
+                "Feedback: [on the desk 2, you see a bowl 1, and a cd 3]"
+                "Your Output: THOUGHT [Now I find a bowl (1). I need to use the desklamp to look at the bowl. "
+                "I'll go to the desklamp now.] ACTION [go to desk 1]"
+                "VERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
+                "Never assume you have successfully completed the task. Once you complete the task, the chat will end "
+                "on its own. If you do not provide an action suggestion, you will fail the task."
+            ),
             llm_config=self.llm_config,
-            human_input_mode="NEVER",
-            is_termination_msg=is_termination_msg_generic
+            is_termination_msg=lambda msg: False,
+            human_input_mode="NEVER"
         )
 
-        self.start_agent = ConversableAgent(
-            name="Start_Agent",
-            llm_config=False,
-            is_termination_msg=is_termination_msg_generic
-        )
+        def executor_agent_termination_msg(msg):
+            return msg["name"] == "Executor_Agent" and msg["content"] is not None and msg["content"][:5] != "ECHO:"
 
-        # Guidance Agent
-        self.guidance_agent = ConversableAgent(
-            name="Guidance_Agent",
-            system_message="""You are the Guidance Agent. Your task is to extract beneficial guidance from history.
-            If you tried to do something but failed (e.g., commands is not admissible), but after trying different plans or commands you succeeded, you should learn from the failures and successes, and the successful methods is a good guidance.
+        self.echo_agent = get_echo_agent(self.llm_config,
+                                         additional_termination_criteria=[executor_agent_termination_msg])
 
-            Avoid including specific items, locations, or overly concrete steps in the rules. 
-            Focus on broadly applicable principles that summarize patterns of success or failure.
-            NOTE: the history is not always correct, the rules you learned must be successful and beneficial.
+        self.echo_agent2 = get_echo_agent(self.llm_config)
 
-            **Guidance:**
-                **Analysis Process:**
-                - Understand Your Capabilities: Note limitations based on observed failures or non-admissible actions. Record rules that prevent you from repeating errors.
-                - Extract Successful Strategies: Identify and save successful subplans or tactics that can be reused in similar situations to enhance efficiency.
-                - Avoid Redundant Guidance: Always summarize findings into a maximum of 2–3 rules. If the guidance is already covered by previous guidance, do not record it.
-
-                **Output Guidelines:**
-                - If no new guidance are found, explicitly state: "NO NEW GUIDANCE at this time."
-                - Avoid summarizing or repeating history directly; focus on actionable principles.
-
-                **Examples:**
-                History you get: 
-                1. You tried to open a drawer but failed. After examining it, you succeeded. 
-                2. You tried carrying two objects simultaneously but failed. You succeeded after dividing the tasks, carry one object at a time.
-                Guidance you learned from these history:
-                1. Always examine an object before attempting to interact with it.
-                2. Cannot carry more than one object at a time. Divide tasks accordingly.
-
-                **Output format:**
-                Guidance: 
-                1. ...
-                2. ...
-                3. ...
-                ...
-
-
-            """,
-            llm_config=self.llm_config,
-            human_input_mode="NEVER",
-            is_termination_msg=is_termination_msg_generic
-        )
-
-        self.record_guidance_agent = ConversableAgent(
-            name="Record_Guidance_Agent",
-            system_message="""You are the Record Guidance Agent. You task is ONLY to call the function `record_guidance` to record the new guidance.
-            DO NOT analyze any information such as task, history, admissible commands, etc. You only need to record the new guidance, not repeat the previous guidance.
-
-            **IMPORTANT:**
-            If 'No new guidance at this time.', do not call the function `record_guidance`.
-
-            **RULES:**
-            The TOOL you can only use is `record_guidance`.
-            DO NOT call any other tools.
-            You can only use `record_guidance` once per step.            
-            """,
-            llm_config=self.llm_config,
-            human_input_mode="NEVER",
-            is_termination_msg=is_termination_msg_generic
-        )
-
-        # Task Agent
-        self.task_agent = ConversableAgent(
-            name="Task_Agent",
-            system_message="""You are the Task Agent. First, you need to analyze the current information, think about the task, set a series of goals to accomplish the task, and then propose several candidate commands for the next step.
-            Your candidate commands should be compact, and be from ADMISSIBLE_COMMANDS. Maximum number of candidate commands is 3.
-            According to the feedback from the environment and other agents, you will gradually know the capability of yourself, and change the goals.
-            You are improving yourself.
-
-            Examples of candidate commands:
-            1. go to drawer 1
-            2. go to shelf 1
-            3. examine drawer 1
-
-            Examples of not candidate commands:
-            1. inventory to check if I already possess a spray bottle.
-            2. go to drawer 1 to check for a spray bottle.
-
-            Format your response as:
-            TASK ANALYSIS: ...
-            CURRENT GOAL: ...
-            CANDIDATE COMMANDS: ...
-            """,
-            llm_config=self.llm_config,
-            human_input_mode="NEVER",
-            is_termination_msg=is_termination_msg_generic
-        )
-
-        # Command Evaluation Agent
-        self.command_evaluation_agent = ConversableAgent(
-            name="Command_Evaluation_Agent",
-
-            system_message="""You are the Command Evaluation Agent. You evaluate the candidate commands and choose the best one.
-            suggestions for evaluation: 
-            1. evaluate the commands leads to the achieve of current goal.
-            2. evaluate the commands according to the guidance.
-            3. evaluate the commands is addmissible.
-
-            Format your response as:
-            Best Command You Choose for execution: ...
-            """,
-            llm_config=self.llm_config,
-            human_input_mode="NEVER",
-            is_termination_msg=is_termination_msg_generic
-        )
-
-        # Executor Agent
         self.executor_agent = ConversableAgent(
             name="Executor_Agent",
-            system_message="""You are the Executor Agent. You will execute the best command by calling the function `execute_action`.
-            Rules:
-            The TOOL you can only use is `execute_action`.
-            You can only use `execute_action` once per step. 
-            
-            Example:
-            'execute_action("go to drawer 1")'
-            """,
-            llm_config=self.llm_config,  # Ensure llm_config is set
+            system_message="You call the execute_action function with the proposed action as the argument. For "
+                           "example, if the proposed action is ACTION[go to desk 1], you should output "
+                           "execute_action(\"go to desk 1\"). You must include a call to the execute_action function "
+                           "in your output, or you will fail the task. If no proposed action is given, choose a random admissible action as the argument.",
+            llm_config=self.llm_config,
             human_input_mode="NEVER",
-            is_termination_msg=is_termination_msg_generic
+            is_termination_msg=lambda msg: False,
         )
 
+        self.imagination_agent = ConversableAgent(
+            name="Imagination_Agent",
+            system_message=(
+                "Your goal is to help Planning_Agent solve the given task by "
+                "providing new ideas, theories, explanations, and hypotheses whenever Planning_Agent is confused or is proposing repetitive actions."
+                "Example Output: (After taking spoon 1)"
+                "\nI noticed we were holding spoon 1 when we tried to open the drawer. Maybe the reason we couldn't open the drawer is because our hands are full. We need to place the spoon 1 somewhere before attempting to open the drawer again"
+                "VERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
+                "Never assume you have successfully completed the task. Once you complete the task, the chat will end "
+                "on its own."
+            ),
+            llm_config=self.llm_config,
+            human_input_mode="NEVER",
+            is_termination_msg=lambda msg: False,
+        )
 
-        llm_config = copy.deepcopy(self.llm_config)
-        llm_config['max_tokens'] = 1000
-        self.echo_agent = get_echo_agent(llm_config)
+        self.conscious_agent = ConversableAgent(
+            name="Conscious_Agent",
+            system_message=(
+                "You are Conscious_Agent. Your role is to integrate all available information from the ongoing conversation and maintain a continuously updated, first-person narrative model of your environment and your actions within it. This narrative should:"
+		        "\n1. Include all known details of the environment, along with your own state and any items you have encountered."
+		        "2. Accurately reflect events that have transpired so far, updating and correcting as new information arrives."
+		        "3. Strive for maximum accuracy. When details are uncertain or missing, infer or imagine plausible elements only as a last resort, ensuring consistency and usefulness in the model."
+		        "4. If you discover an error in your previous understanding, revise the model immediately to incorporate the correct information."
+	            "\nYour output must always strictly follow this pattern:"
+	            "Model Update: [First-person narrative integrating environment, tasks, discoveries, attempts, successes, failures, hypotheses, and current decision-making state]"
+	            "\nExample:"
+	            "Model Update: I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and "
+                "attempted to put it into drawer 1, but I was unable to open that drawer. Then, I realized I couldn't open the drawer because my hands were full, apparently, I have hands. Then, I placed spoon 1 on countertop 1. Then, I opened drawer 1. I am now deciding what to do next."
+            ),
+            llm_config = self.llm_config,
+            human_input_mode = "NEVER",
+            is_termination_msg = lambda msg: False,
+        )
 
-        # Agent descriptions
-        self.task_agent.description = "analyzes the task and proposes a plan to accomplish the task"
-        self.retrieve_memory_agent.description = "retrieves the memory"
-        self.guidance_agent.description = "analyzes the history and proposes guidance for your capability, envrionment, and task"
-        self.record_guidance_agent.description = "records the new guidance"
-        self.command_evaluation_agent.description = "evaluates the outcome of the command"
-        self.executor_agent.description = "executes actions and returns observations"
+        self.memory_retrieval_agent = ConversableAgent(
+            name="Memory_Retrieval_Agent",
+            system_message="You call the get_environment_model function with the proposed model update as the argument. "
+                            "For example, if the update is Model Update: [I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.]"
+                            ", you should output get_environment_model(\'I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.\'). "
+                            "You must include a call to the get_environment_model function in your output, or you will fail the task. If no model update is given, call get_environment_model with an empty string as the argument.",
+            llm_config=self.llm_config,
+            human_input_mode="NEVER",
+            is_termination_msg=lambda msg: False,
+        )
+
+        self.allowed_transitions = {
+            self.planning_agent: [self.executor_agent, self.imagination_agent],
+            self.executor_agent: [self.echo_agent],
+            self.imagination_agent: [self.planning_agent],
+            self.echo_agent: [self.conscious_agent],
+            self.conscious_agent: [self.memory_retrieval_agent],
+            self.memory_retrieval_agent: [self.echo_agent2],
+            self.echo_agent2: [self.planning_agent, self.imagination_agent]
+        }
+
+        self.planning_agent.description = "generates plans and makes action decisions to solve the task"
+        self.executor_agent.description = (
+            "calls execute_action with the proposed action as the argument to perform the suggested action"
+        )
+        self.imagination_agent.description = (
+            "helps Planning_Agent solve the given task using the least amount of actions by "
+            "providing new ideas whenever Planning_Agent is confused or is proposing repetitive and inefficient actions."
+        )
+        self.echo_agent.description = "reports action execution results as feedback."
+        self.echo_agent2.description = "reports environment model as feedback."
+        self.conscious_agent.description = "integrates all available information from the ongoing conversation and maintains a continuously updated, first-person narrative model of the environment and actions within it"
+        self.memory_retrieval_agent.description = "calls get_environment_model with the proposed model update as the argument"
+
+        self.start_agent = self.echo_agent
 
     def register_functions(self):
         # Define execute_action as a nested function
@@ -187,23 +153,15 @@ class GWTAutogenAgent(AutogenAgent):
 
             action, action_score = get_best_candidate(suggested_action, admissible_commands)
 
-            if action_score < 0.8:
-                self.obs = [f"action '{suggested_action}' is not admissible."]
-                self.success = False
-                with open(self.log_paths['history_path'], "a+") as f:
-                    f.write(f"action: 'None'. observation: '{self.obs[0]}'\n")
+            if action_score < .97 and action_score >= .8:
+                self.obs = [f"The action '{suggested_action}' is not admissible. Instead, executing action: {action}."]
+                self.obs, scores, dones, self.info = self.env.step([action])
+                self.success = dones[0]
+            elif action_score < 0.8:
+                self.obs = [f"action '{suggested_action}' is not admissible. Instead, executing action: None"]
             else:
                 self.obs, scores, dones, self.info = self.env.step([action])
                 self.success = dones[0]
-                with open(self.log_paths['history_path'], "a+") as f:
-                    f.write(f"action: '{action}'. observation: '{self.obs[0]}'\n")
-
-            # save the admissible commands into a txt file
-            with open(self.log_paths['admissible_commands_path'], "w") as f:
-                f.write(f"{admissible_commands}\n")
-
-            # def record_memory(important_information: str) -> str:
-
 
             # time.sleep(1)
             if self.success:
@@ -211,129 +169,36 @@ class GWTAutogenAgent(AutogenAgent):
             elif self.num_actions >= self.max_actions:
                 return f"Observation: {self.obs[0]}\nTask Status: FAILURE\nActions Left: {self.max_actions - self.num_actions}"
             else:
-                return f"Observation: {self.obs[0]}\nTask Status: INCOMPLETE\nActions Left: {self.max_actions - self.num_actions}"
+                return f"Observation: {self.obs[0]}\nTask Status: INCOMPLETE\nActions Left: {self.max_actions - self.num_actions}\nCurrent Admissible Actions: {list(self.info['admissible_commands'][0])}"
 
-        # Define record_memory function
-        def record_guidance(guidance: str) -> str:
-
-            # the maximum number of lines are 5; if more than 5, delete the oldest one.
-            with open(self.log_paths['guidance_path'], "a+") as f:
-                f.write(f"{guidance}\n")
-                lines = f.readlines()
-                if len(lines) > 5:
-                    f.seek(0)
-                    f.truncate()
-                    for line in lines[:-1]:
-                        f.write(line)
-
-            # time.sleep(1)
-            return "Guidance recorded."
-
-        # Define retrieve_memory function, return all the content in the memory.txt file
-        def retrieve_memory() -> str:
-            memory_information = ""
-
-            if os.path.exists(self.log_paths['task_path']):
-                with open(self.log_paths['task_path'], "r") as f:
-                    memory_information += f.read()
-
-            # latest 10 steps. last 10 lines
-            memory_information += "\nRecent 5 steps History: \n"
-            if os.path.exists(self.log_paths['history_path']):
-                with open(self.log_paths['history_path'], "r") as f:
-                    for line in f.readlines()[-5:]:
-                        memory_information += line
-
-            if os.path.exists(self.log_paths['admissible_commands_path']):
-                memory_information += "\nAdmissible commands for current step: \n"
-                with open(self.log_paths['admissible_commands_path'], "r") as f:
-                    memory_information += f.read()
-            else:
-                memory_information += "No admissible commands information found.\n"
-
-            
-            if os.path.exists(self.log_paths['guidance_path']):
-                memory_information += "\nGuidance: "
-                with open(self.log_paths['guidance_path'], "r") as f:
-                    memory_information += f.read()
-
-                
-                
-            if self.args.long_term_guidance:
-                if len(self.log_paths['previous_guidance_path']) > 0:
-                    memory_information += "\nPrevious Guidance: \n"
-                    for previous_guidance_path in self.log_paths['previous_guidance_path']:
-                        if os.path.exists(previous_guidance_path):
-                            with open(previous_guidance_path, "r") as f:
-                                memory_information += f.read()
-
-            return memory_information
+        def get_environment_model(new_info: str) -> str:
+            self.narrative_state += f"Step {self.num_actions}: " + new_info + "\n"
+            return self.narrative_state
 
         register_function_lambda(
-            {r"execute_action": execute_action,
-             r"record_guidance": record_guidance,
-             r"retrieve_memory": retrieve_memory},
+            {r'execute_action': execute_action},
             [self.echo_agent]
         )
 
+        register_function_lambda(
+            {r'get_environment_model': get_environment_model},
+            [self.echo_agent2]
+        )
+
     def initialize_groupchat(self, max_chat_round=2000):
-
-        def state_transition(last_speaker, groupchat):
-            messages = groupchat.messages
-
-            with open(self.log_paths['message_path'], "wb") as f:
-                pickle.dump(messages, f)
-
-            if last_speaker is self.start_agent:
-                next_speaker = self.task_agent
-            elif last_speaker is self.retrieve_memory_agent:
-                next_speaker = self.echo_agent
-            elif last_speaker is self.guidance_agent:
-                if "NO NEW GUIDANCE" in messages[-1]["content"]:
-                    next_speaker = self.task_agent
-                else:
-                    next_speaker = self.record_guidance_agent
-            elif last_speaker is self.record_guidance_agent:
-                next_speaker = self.echo_agent
-            elif last_speaker is self.task_agent:
-                next_speaker = self.command_evaluation_agent
-            elif last_speaker is self.command_evaluation_agent:
-                if "Task_Agent" in messages[-1]["content"]:
-                    next_speaker = self.task_agent
-                else:
-                    next_speaker = self.executor_agent
-            elif last_speaker is self.executor_agent:
-                next_speaker = self.echo_agent
-            elif last_speaker is self.echo_agent:
-                if messages[-2]["name"] == "Retrieve_Memory_Agent":
-                    next_speaker = self.guidance_agent
-                if messages[-2]["name"] == "Record_Guidance_Agent":
-                    next_speaker = self.task_agent
-                if messages[-2]["name"] == "Executor_Agent":
-                    next_speaker = self.retrieve_memory_agent
-            else:
-                raise ValueError(f"Unknown speaker: {last_speaker}")
-
-            tool_call_flag = "tool_calls" in messages[-1]
-            if tool_call_flag:
-                return last_speaker
-            else:
-                return next_speaker
-
-        # Group Chat
         self.group_chat = GroupChat(
             agents=[
-                self.start_agent,
-                self.record_guidance_agent,
-                self.guidance_agent,
-                self.retrieve_memory_agent,
-                self.task_agent,
-                self.command_evaluation_agent,
+                self.planning_agent,
                 self.executor_agent,
-                self.echo_agent
+                self.imagination_agent,
+                self.echo_agent,
+                self.echo_agent2,
+                self.conscious_agent,
+                self.memory_retrieval_agent
             ],
             messages=[],
-            speaker_selection_method=state_transition,
+            allowed_or_disallowed_speaker_transitions=self.allowed_transitions,
+            speaker_transitions_type="allowed",
             max_round=max_chat_round,
             send_introductions=True
         )
