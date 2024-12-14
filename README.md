@@ -166,5 +166,13 @@ self.group_chat = GroupChat(
 )
 ```
 
-#
+### Long Term Guidance
+This is a new feature that I added to the code. In every game, the agent will summarize and learn the guidance of the task. It will be saved in the `guidance.txt` file. During this game, the guidance will be used to guide the agent's action. Long term guidance means that the guidance learned in previous games will be used to guide the agent's action in current game. Use `--long_term_guidance` to enable this feature. 
+
+To run the code with long term guidance, use the following command:
+
+```sh
+python run_autogen_eval_loop --gwt --long_term_guidance configs/eval_config.yaml
+```
+
 

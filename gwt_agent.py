@@ -6,7 +6,8 @@ from autogen_agent import AutogenAgent
 
 
 class GWTAutogenAgent(AutogenAgent):
-    def __init__(self, env, obs, info, llm_config, log_path=None, max_actions=50):
+    def __init__(self, env, obs, info, llm_config, log_path, game_no, max_actions=50, args=None):
+        super().__init__(env, obs, info, llm_config, log_path, game_no, max_actions, args)
         self.retrieve_memory_agent = None
         self.guidance_agent = None
         self.record_guidance_agent = None
@@ -14,8 +15,10 @@ class GWTAutogenAgent(AutogenAgent):
         self.command_evaluation_agent = None
         self.executor_agent = None
         self.echo_agent = None
+        
+        self.args = args
 
-        super().__init__(env, obs, info, llm_config, log_path, max_actions)
+        self.initialize_autogen()
 
     def initialize_agents(self):
         # Retrieve Memory Agent
@@ -168,8 +171,6 @@ class GWTAutogenAgent(AutogenAgent):
         self.executor_agent.description = "executes actions and returns observations"
 
     def register_functions(self):
-        log_paths = self.get_log_paths()
-
         # Define execute_action as a nested function
         def execute_action(suggested_action: str) -> str:
             assert len(list(self.info['admissible_commands'])) == 1
@@ -183,12 +184,12 @@ class GWTAutogenAgent(AutogenAgent):
             if action_score < 0.8:
                 self.obs = [f"action '{suggested_action}' is not admissible."]
                 self.success = False
-                with open(log_paths['history_path'], "a+") as f:
+                with open(self.log_paths['history_path'], "a+") as f:
                     f.write(f"action: 'None'. observation: '{self.obs[0]}'\n")
             else:
                 self.obs, scores, dones, self.info = self.env.step([action])
                 self.success = dones[0]
-                with open(log_paths['history_path'], "a+") as f:
+                with open(self.log_paths['history_path'], "a+") as f:
                     f.write(f"action: '{action}'. observation: '{self.obs[0]}'\n")
 
             # save the admissible commands into a txt file
@@ -210,7 +211,7 @@ class GWTAutogenAgent(AutogenAgent):
         def record_guidance(guidance: str) -> str:
 
             # the maximum number of lines are 5; if more than 5, delete the oldest one.
-            with open(log_paths['guidance_path'], "a+") as f:
+            with open(self.log_paths['guidance_path'], "a+") as f:
                 f.write(f"{guidance}\n")
                 lines = f.readlines()
                 if len(lines) > 5:
@@ -226,21 +227,16 @@ class GWTAutogenAgent(AutogenAgent):
         def retrieve_memory() -> str:
             memory_information = ""
 
-            memory_information += "Task: \n"
-            if os.path.exists(log_paths['task_path']):
-                with open(log_paths['task_path'], "r") as f:
+            if os.path.exists(self.log_paths['task_path']):
+                with open(self.log_paths['task_path'], "r") as f:
                     memory_information += f.read()
-            else:
-                memory_information += "No task information found.\n"
 
             # latest 10 steps. last 10 lines
             memory_information += "\nRecent 5 steps History: \n"
-            if os.path.exists(log_paths['history_path']):
-                with open(log_paths['history_path'], "r") as f:
+            if os.path.exists(self.log_paths['history_path']):
+                with open(self.log_paths['history_path'], "r") as f:
                     for line in f.readlines()[-5:]:
                         memory_information += line
-            else:
-                memory_information += "No history information found.\n"
 
             # if os.path.exists(log_paths['admissible_commands_path']):
             #     memory_information += "\nAdmissible commands for current step: \n"
@@ -249,12 +245,20 @@ class GWTAutogenAgent(AutogenAgent):
             # else:
             #     memory_information += "No admissible commands information found.\n"
 
-            if os.path.exists(log_paths['guidance_path']):
-                memory_information += "\nGuidance: \n"
-                with open(log_paths['guidance_path'], "r") as f:
+            
+            if os.path.exists(self.log_paths['guidance_path']):
+                memory_information += "\nGuidance: "
+                with open(self.log_paths['guidance_path'], "r") as f:
                     memory_information += f.read()
-            else:
-                memory_information += "\nNo guidance information found.\n"
+
+                
+                
+            if self.args.long_term_guidance:
+                if len(self.log_paths['previous_guidance_path']) > 0:
+                    memory_information += "\nPrevious Guidance: \n"
+                    for previous_guidance_path in self.log_paths['previous_guidance_path']:
+                        with open(previous_guidance_path, "r") as f:
+                            memory_information += f.read()
 
             return memory_information
 
@@ -266,12 +270,11 @@ class GWTAutogenAgent(AutogenAgent):
         )
 
     def initialize_groupchat(self, max_chat_round=2000):
-        log_paths = self.get_log_paths()
 
         def state_transition(last_speaker, groupchat):
             messages = groupchat.messages
 
-            with open(log_paths['message_path'], "wb") as f:
+            with open(self.log_paths['message_path'], "wb") as f:
                 pickle.dump(messages, f)
 
             if last_speaker is self.start_agent:

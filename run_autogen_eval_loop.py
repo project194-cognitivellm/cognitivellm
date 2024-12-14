@@ -30,6 +30,11 @@ def parse_arguments():
         action="store_true",
         help="Use the GWTAutogenAgent for evaluation."
     )
+    parser.add_argument(
+        "--long_term_guidance",
+        action="store_true",
+        help="Use long term guidance."
+    )
     return parser.parse_args()
 
 
@@ -94,11 +99,10 @@ if __name__ == "__main__":
                     print("Initialized Environment")
 
                     obs, info = env.reset()
-                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, max_actions=35)
-                    agent.update_game_no(i)
+                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, game_no = i, max_actions=35, args=args)
 
                     log_paths = agent.get_log_paths()
-
+                    
                     initial_message_content = ""
                     # find the task description in the observation, save it as a txt file.
                     task_description = obs[0].split("Your task is to: ")[1]
@@ -168,8 +172,6 @@ if __name__ == "__main__":
 
                     else:
                         chat_round_list.append(-1)
-
-                    # exit()
 
                     success = agent.success
                     print(f'Success: {success}')
