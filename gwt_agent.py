@@ -185,7 +185,7 @@ class GWTAutogenAgent(AutogenAgent):
                 self.obs = [f"action '{suggested_action}' is not admissible.\n"]
                 self.success = False
                 with open(log_paths['history_path'], "a+") as f:
-                    f.write(f"action: 'None'. observation: [{self.obs[0]}]\n")
+                    f.write(f"action: 'None'. observation: '{self.obs[0]}'\n")
             else:
                 self.obs, scores, dones, self.info = self.env.step([action])
                 self.success = dones[0]
@@ -235,10 +235,10 @@ class GWTAutogenAgent(AutogenAgent):
                 memory_information += "No task information found.\n"
 
             # latest 10 steps. last 10 lines
-            memory_information += "\nRecent 10 steps History: \n"
+            memory_information += "\nRecent 5 steps History: \n"
             if os.path.exists(log_paths['history_path']):
                 with open(log_paths['history_path'], "r") as f:
-                    for line in f.readlines()[-10:]:
+                    for line in f.readlines()[-5:]:
                         memory_information += line
             else:
                 memory_information += "No history information found.\n"
