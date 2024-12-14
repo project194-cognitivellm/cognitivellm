@@ -181,8 +181,7 @@ class GWTAutogenAgent(AutogenAgent):
             action, action_score = get_best_candidate(suggested_action, admissible_commands)
 
             if action_score < 0.8:
-                output = f"action '{suggested_action}' is not admissible.\n"
-                self.obs = [f"action '{suggested_action}' is not admissible.\n"]
+                self.obs = [f"action '{suggested_action}' is not admissible."]
                 self.success = False
                 with open(log_paths['history_path'], "a+") as f:
                     f.write(f"action: 'None'. observation: '{self.obs[0]}'\n")
