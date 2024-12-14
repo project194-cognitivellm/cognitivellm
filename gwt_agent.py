@@ -182,21 +182,22 @@ class GWTAutogenAgent(AutogenAgent):
 
             if action_score < 0.8:
                 output = f"action '{suggested_action}' is not admissible.\n"
-                with open(log_paths['history_path'], "a+") as f:
-                    f.write(output)
-                self.obs = [f"action '{suggested_action}' is not admissible."]
+                self.obs = [f"action '{suggested_action}' is not admissible.\n"]
                 self.success = False
+                with open(log_paths['history_path'], "a+") as f:
+                    f.write(f"action: 'None'. observation: [{self.obs[0]}]\n")
             else:
                 self.obs, scores, dones, self.info = self.env.step([action])
                 self.success = dones[0]
+                with open(log_paths['history_path'], "a+") as f:
+                    f.write(f"action: '{action}'. observation: '{self.obs[0]}'\n")
 
             # save the admissible commands into a txt file
-            with open(log_paths['admissible_commands_path'], "w") as f:
-                f.write(f"{admissible_commands}\n")
+            # with open(log_paths['admissible_commands_path'], "w") as f:
+            #     f.write(f"{admissible_commands}\n")
 
             # def record_memory(important_information: str) -> str:
-            with open(log_paths['history_path'], "a+") as f:
-                f.write(f"action: [{action}] observation: [{self.obs[0]}]\n")
+
 
             # time.sleep(1)
             if self.success:
@@ -242,19 +243,19 @@ class GWTAutogenAgent(AutogenAgent):
             else:
                 memory_information += "No history information found.\n"
 
-            if os.path.exists(log_paths['admissible_commands_path']):
-                memory_information += "\nAdmissible commands for current step: \n"
-                with open(log_paths['admissible_commands_path'], "r") as f:
-                    memory_information += f.read()
-            else:
-                memory_information += "No admissible commands information found.\n"
+            # if os.path.exists(log_paths['admissible_commands_path']):
+            #     memory_information += "\nAdmissible commands for current step: \n"
+            #     with open(log_paths['admissible_commands_path'], "r") as f:
+            #         memory_information += f.read()
+            # else:
+            #     memory_information += "No admissible commands information found.\n"
 
             if os.path.exists(log_paths['guidance_path']):
                 memory_information += "\nGuidance: \n"
                 with open(log_paths['guidance_path'], "r") as f:
                     memory_information += f.read()
             else:
-                memory_information += "No guidance information found.\n"
+                memory_information += "\nNo guidance information found.\n"
 
             return memory_information
 

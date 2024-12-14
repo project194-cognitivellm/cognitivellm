@@ -39,7 +39,7 @@ if __name__ == "__main__":
     if args.baseline:
         agent_class = BaselineAutogenAgent
         agent_name = "BaselineAutogenAgent"
-    elif args.cognitive:
+    elif args.gwt:
         agent_class = GWTAutogenAgent
         agent_name = "GWTAutogenAgent"
     else:
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     with open(args.config_file) as reader:
         config = yaml.safe_load(reader)
 
-    wandb.init(project="cognitive-agents", entity="cog-llm")
+    wandb.init(project="cogllm")
 
     API_KEY = os.environ.get("LAMBDA_API_KEY")
     BASE_URL = "https://api.lambdalabs.com/v1"
@@ -109,16 +109,16 @@ if __name__ == "__main__":
                     initial_message_content += f"Task: {task_description}\n"
 
                     with open(log_paths['history_path'], "w") as f:
-                        f.write(f"action: [None] observation: [{initial_observation}]\n")
+                        f.write(f"action: 'None'. observation: '{initial_observation}'\n")
 
                     initial_message_content += f"Observation: {initial_observation}\n"
 
-                    admissible_commands = list(info['admissible_commands'][0])
-                    # save the addmissible commands into a txt file
-                    with open(log_paths['admissible_commands_path'], "w") as f:
-                        f.write(f"{admissible_commands}\n")
+                    # admissible_commands = list(info['admissible_commands'][0])
+                    # # save the addmissible commands into a txt file
+                    # with open(log_paths['admissible_commands_path'], "w") as f:
+                    #     f.write(f"{admissible_commands}\n")
 
-                    initial_message_content += f"Admissible commands: {admissible_commands}\n"
+                    # initial_message_content += f"Admissible commands: {admissible_commands}\n"
 
                     run_chat = True
 
