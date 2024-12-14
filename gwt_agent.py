@@ -154,6 +154,9 @@ class GWTAutogenAgent(AutogenAgent):
             Rules:
             The TOOL you can only use is `execute_action`.
             You can only use `execute_action` once per step. 
+            
+            Example:
+            'execute_action("go to drawer 1")'
             """,
             llm_config=self.llm_config,  # Ensure llm_config is set
             human_input_mode="NEVER",
@@ -196,8 +199,8 @@ class GWTAutogenAgent(AutogenAgent):
                     f.write(f"action: '{action}'. observation: '{self.obs[0]}'\n")
 
             # save the admissible commands into a txt file
-            # with open(log_paths['admissible_commands_path'], "w") as f:
-            #     f.write(f"{admissible_commands}\n")
+            with open(self.log_paths['admissible_commands_path'], "w") as f:
+                f.write(f"{admissible_commands}\n")
 
             # def record_memory(important_information: str) -> str:
 
@@ -241,12 +244,12 @@ class GWTAutogenAgent(AutogenAgent):
                     for line in f.readlines()[-5:]:
                         memory_information += line
 
-            # if os.path.exists(log_paths['admissible_commands_path']):
-            #     memory_information += "\nAdmissible commands for current step: \n"
-            #     with open(log_paths['admissible_commands_path'], "r") as f:
-            #         memory_information += f.read()
-            # else:
-            #     memory_information += "No admissible commands information found.\n"
+            if os.path.exists(self.log_paths['admissible_commands_path']):
+                memory_information += "\nAdmissible commands for current step: \n"
+                with open(self.log_paths['admissible_commands_path'], "r") as f:
+                    memory_information += f.read()
+            else:
+                memory_information += "No admissible commands information found.\n"
 
             
             if os.path.exists(self.log_paths['guidance_path']):
@@ -260,8 +263,9 @@ class GWTAutogenAgent(AutogenAgent):
                 if len(self.log_paths['previous_guidance_path']) > 0:
                     memory_information += "\nPrevious Guidance: \n"
                     for previous_guidance_path in self.log_paths['previous_guidance_path']:
-                        with open(previous_guidance_path, "r") as f:
-                            memory_information += f.read()
+                        if os.path.exists(previous_guidance_path):
+                            with open(previous_guidance_path, "r") as f:
+                                memory_information += f.read()
 
             return memory_information
 

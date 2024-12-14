@@ -117,12 +117,12 @@ if __name__ == "__main__":
 
                     initial_message_content += f"Observation: {initial_observation}\n"
 
-                    # admissible_commands = list(info['admissible_commands'][0])
-                    # # save the addmissible commands into a txt file
-                    # with open(log_paths['admissible_commands_path'], "w") as f:
-                    #     f.write(f"{admissible_commands}\n")
 
-                    # initial_message_content += f"Admissible commands: {admissible_commands}\n"
+                    # save the admissible commands into a txt file
+                    admissible_commands = list(info['admissible_commands'][0])
+                    with open(log_paths['admissible_commands_path'], "w") as f:
+                        f.write(f"{admissible_commands}\n")
+                    initial_message_content += f"Admissible commands: {admissible_commands}\n"
 
                     run_chat = True
 
