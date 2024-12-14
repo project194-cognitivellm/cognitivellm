@@ -518,7 +518,7 @@ for eval_env_type in eval_envs:
             max_steps = 100
             success_list = []
 
-            num_games = 50
+            num_games = 10
             for i in range(num_games):
                 
                 game_path = os.path.join(base_path, f"game_{i}")    
