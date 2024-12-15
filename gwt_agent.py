@@ -47,16 +47,21 @@ class GWTAutogenAgent(AutogenAgent):
         # Guidance Agent
         self.guidance_agent = ConversableAgent(
             name="Guidance_Agent",
-            system_message="""You are the Guidance Agent. Your task is to derive actionable guidance from the history of observations and actions. 
-            **Key Principles:**
-            1. Learn from both failures and successes, focusing on broadly applicable principles.
-            2. Avoid including overly specific or concrete steps; generalize strategies for reusability.
-            3. Validate that rules are successful before recording them.
-
+            system_message="""You are the Guidance Agent. Your task is to extract beneficial guidance from history.
+            If you tried to do something but failed (e.g., commands is not admissible), but after trying different plans or commands you succeeded, you should learn from the failures and successes, and the successful methods is a good guidance.
+            Avoid including specific items, locations, or overly concrete steps in the rules. 
+            Focus on broadly applicable principles that summarize patterns of success or failure.
+            NOTE: the history is not always correct, the rules you learned must be successful and beneficial.
+        
+            **Analysis Process:**
+            - Understand Your Capabilities: Note limitations based on observed failures or non-admissible actions. Record rules that prevent you from repeating errors.
+            - Extract Successful Strategies: Identify and save successful subplans or tactics that can be reused in similar situations to enhance efficiency.
+            - Avoid Redundant Guidance: Always summarize findings into a maximum of 2–3 rules. If the guidance is already covered by previous guidance, do not record it.
+            
             **Output Guidelines:**
-            1. Summarize findings into a maximum of 1–2 rules. Do NOT repeat history or redundant guidance.
-            2. If no new guidance is found, state explicitly: "NO NEW GUIDANCE at this time."
-
+            - If no new guidance are found, explicitly state: "NO NEW GUIDANCE at this time."
+            - Avoid summarizing or repeating history directly; focus on actionable principles.
+            
             **Examples:**
             Recent 5 steps History: 
             action: 'go to drawer 1'. observation: 'You arrive at loc 13. The drawer 1 is closed.'
@@ -65,12 +70,15 @@ class GWTAutogenAgent(AutogenAgent):
             action: 'open drawer 1'. observation: 'You open the drawer 1. The drawer 1 is open. In it, you see nothing.'
             Guidance:
             1. Always 'look' or 'examine' before attempting to interact with an object.
-
-            **Output Format:**
-            Guidance:
+            
+            **Output format:**
+            Guidance: 
             1. ...
             2. ...
+            3. ...
+            ...
 
+        
             """,
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -139,8 +147,6 @@ class GWTAutogenAgent(AutogenAgent):
             2. Use guidance to assess the effectiveness of each action.
             3. Ensure the chosen action is admissible.
             
-            **Rules:**
-            1. be concise and to the point.
 
             **Output Format:**
             Best Action You Choose for Execution: ...
