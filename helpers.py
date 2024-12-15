@@ -13,7 +13,7 @@ def parse_tool_call(tool_call_string: str) -> Tuple[str, Tuple]:
     Parse a tool call string to extract the tool call name and parameters.
     For example: "function_name('param1', 42)" -> ("function_name", ("param1", 42))
     """
-    pattern = r"(\w+)\((.*?)\)"
+    pattern = r"(\w+)\(([\S\s]*?)\)"
     match = re.match(pattern, tool_call_string)
     if match:
         tool_call_name = match.group(1)
@@ -34,12 +34,16 @@ def parse_tool_call(tool_call_string: str) -> Tuple[str, Tuple]:
 
 
 class MessageToolCall:
-    def __init__(self, tool_dict: Dict[str, Callable]):
+    def __init__(self, tool_dict: Dict[str, Callable], last_message_only: bool = False, append_echo: bool = False,
+                 echo_signifier: str = "ECHO: "):
         # Ensure all values in tool_dict are callable.
         self.tool_dict = tool_dict
         for _, tool in tool_dict.items():
             if not callable(tool):
                 raise ValueError("All tools must be callable functions.")
+        self.last_message_only = last_message_only
+        self.append_echo = append_echo
+        self.echo_signifier = echo_signifier
 
     def _transform_text_content(self, text: str) -> str:
         """
@@ -51,7 +55,7 @@ class MessageToolCall:
             # Build a pattern that matches this specific tool call
             # Note: The non-greedy .*? is used to match minimal parameters
             # While still allowing multiple calls.
-            pattern = rf"{re.escape(tool_name)}\((.*?)\)"
+            pattern = rf"{re.escape(tool_name)}\(([\S\s]*?)\)"
 
             match = re.search(pattern, text)
             if not match:
@@ -63,7 +67,10 @@ class MessageToolCall:
             parsed_tool_name, args = parse_tool_call(full_call_str)
             if parsed_tool_name == tool_name:
                 result = func(*args)
-                return f"ECHO: {result}"
+                if self.append_echo:
+                    return f"{text}\n\n{self.echo_signifier}{result}"
+                else:
+                    return f"{self.echo_signifier}{result}"
             else:
                 # If somehow parsing didn't match the tool_name, break to avoid infinite loop
                 raise ValueError(f"Tool name mismatch: {parsed_tool_name} != {tool_name}")
@@ -83,19 +90,28 @@ class MessageToolCall:
                 if item.get("type") == "text" and isinstance(item["text"], str):
                     item["text"] = self._transform_text_content(item["text"])
 
+        if self.last_message_only:
+            temp_messages = [temp_messages[-1]]
+
         return temp_messages
 
     def get_logs(self, pre_transform_messages: List[Dict], post_transform_messages: List[Dict]) -> Tuple[str, bool]:
         # Compare pre and post transformation messages for changes.
+        if len(pre_transform_messages) != len(post_transform_messages):
+            print("Updated messages for this query:")
+            print(post_transform_messages)
+            return "Messages compacted", True
         for message, post_message in zip(pre_transform_messages, post_transform_messages):
             if message["content"] != post_message["content"]:
                 return "Function call triggered", True
         return "", False
 
 
-def register_function_lambda(tool_dict: Dict[str, Callable], agents: List[ConversableAgent]):
+def register_function_lambda(tool_dict: Dict[str, Callable], agents: List[ConversableAgent],
+                             last_message_only: bool = False, append_echo: bool = False,
+                             echo_signifier: str = "ECHO: "):
     tool_handling = transform_messages.TransformMessages(
-        transforms=[MessageToolCall(tool_dict)])
+        transforms=[MessageToolCall(tool_dict, last_message_only, append_echo, echo_signifier)])
     for agent in agents:
         tool_handling.add_to_agent(agent)
 
