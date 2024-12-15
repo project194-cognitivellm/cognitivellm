@@ -11,6 +11,7 @@ import alfworld.agents.modules.generic as generic
 import alfworld.agents.environment as environment
 from gwt_agent import GWTAutogenAgent
 from baseline_agent import BaselineAutogenAgent
+from long_term_memory_agent import MemoryAutogenAgent
 import wandb    # Install wandb, use wandb login in cmd, and then run the code
 
 
@@ -30,6 +31,11 @@ def parse_arguments():
         action="store_true",
         help="Use the GWTAutogenAgent for evaluation."
     )
+    group.add_argument(
+        "--long-term-memory",
+        action="store_true",
+        help="Use the LongTermMemoryAutogenAgent for evaluation."
+    )
     parser.add_argument(
         "--long_term_guidance",
         action="store_true",
@@ -47,6 +53,9 @@ if __name__ == "__main__":
     elif args.gwt:
         agent_class = GWTAutogenAgent
         agent_name = "GWTAutogenAgent"
+    elif args.long_term_memory:
+        agent_class = MemoryAutogenAgent
+        agent_name = "MemoryAutogenAgent"
     else:
         raise ValueError("No agent specified. Use --baseline or --gwt.")
     print(f"Selected Agent: {agent_name}")
