@@ -78,6 +78,7 @@ if __name__ == "__main__":
 
     result_list_path = os.path.join(base_path, "result_list.txt")
     chat_round_list = []
+    num_actions_list = []
 
     for eval_env_type in eval_envs:
         for controller_type in (controllers if eval_env_type == "AlfredThorEnv" else ["tw"]):
@@ -176,8 +177,13 @@ if __name__ == "__main__":
                     success = agent.success
                     print(f'Success: {success}')
                     success_list.append(success)
-
-                    wandb.log({"success": success, "success_rate": np.sum(success_list) / len(success_list)})
+                    num_actions_list.append(agent.num_actions)
+                    wandb.log({"success": int(success), 
+                               "success_rate": np.sum(success_list) / len(success_list),
+                               "chat_round": chat_round_list[-1],
+                               "game_no": i,
+                               "num_actions": agent.num_actions,
+                               })
 
                     # save success and chat_round into a txt file
                     with open(log_paths['result_path'], "w") as f:
@@ -188,7 +194,7 @@ if __name__ == "__main__":
                     with open(result_list_path, "w") as f:
                         f.write(f"Success List: {success_list}\n")
                         f.write(f"Chat Round List: {chat_round_list}\n")
-
+                        f.write(f"Num Actions List: {num_actions_list}\n")
                 print(f"Success Rate: {np.sum(success_list)}/{num_games}")
 
 wandb.finish()
