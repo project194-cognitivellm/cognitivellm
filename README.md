@@ -176,3 +176,7 @@ python run_autogen_eval_loop --gwt --long_term_guidance configs/eval_config.yaml
 ```
 
 
+### Lambda
+export LAMBDA_API_KEY="secret_cog-llm_4ac4efd85b9a4552904bd5b4630c60a4.Al0KM1fEEmrokHGcJQrlQyW4SY8OuCvU"
+export ALFWORLD_DATA=
+

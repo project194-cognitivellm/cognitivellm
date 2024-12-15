@@ -10,6 +10,7 @@ from datetime import datetime
 import alfworld.agents.modules.generic as generic
 import alfworld.agents.environment as environment
 from gwt_agent import GWTAutogenAgent
+from gwt_agent_rule import GWTRuleAutogenAgent
 from baseline_agent import BaselineAutogenAgent
 import wandb    # Install wandb, use wandb login in cmd, and then run the code
 
@@ -30,6 +31,14 @@ def parse_arguments():
         action="store_true",
         help="Use the GWTAutogenAgent for evaluation."
     )
+    
+    group.add_argument(
+        "--gwt_rule",
+        action="store_true",
+        help="Use the GWTRuleAutogenAgent with rule for evaluation."
+    )
+    
+    
     parser.add_argument(
         "--long_term_guidance",
         action="store_true",
@@ -47,6 +56,9 @@ if __name__ == "__main__":
     elif args.gwt:
         agent_class = GWTAutogenAgent
         agent_name = "GWTAutogenAgent"
+    elif args.gwt_rule:
+        agent_class = GWTRuleAutogenAgent
+        agent_name = "GWTRuleAutogenAgent"
     else:
         raise ValueError("No agent specified. Use --baseline or --gwt.")
     print(f"Selected Agent: {agent_name}")
@@ -178,6 +190,8 @@ if __name__ == "__main__":
                     print(f'Success: {success}')
                     success_list.append(success)
                     num_actions_list.append(agent.num_actions)
+                    
+                    # wandb log
                     wandb.log({"success": int(success), 
                                "success_rate": np.sum(success_list) / len(success_list),
                                "chat_round": chat_round_list[-1],
