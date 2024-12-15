@@ -109,8 +109,6 @@ class MessageToolCall:
     def get_logs(self, pre_transform_messages: List[Dict], post_transform_messages: List[Dict]) -> Tuple[str, bool]:
         # Compare pre and post transformation messages for changes.
         if len(pre_transform_messages) != len(post_transform_messages):
-            print("Updated messages for this query:")
-            print(post_transform_messages)
             return "Messages compacted", True
         for message, post_message in zip(pre_transform_messages, post_transform_messages):
             if message["content"] != post_message["content"]:
