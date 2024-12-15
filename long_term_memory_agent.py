@@ -123,13 +123,15 @@ class MemoryAutogenAgent(AutogenAgent):
                 "3. If multiple lessons can be combined or generalized into a single, broader lesson, do so. Avoid redundancy.\n"
                 "4. Keep the lessons concise, actionable, and future-oriented. Avoid overly specific details that won't apply broadly. "
                 "Ensure each lesson is understandable at a glance.\n"
-                "5. The final output must be a call to record_memory_summary(\"\"\"<updated summary>\"\"\"), where <updated summary> "
-                "is represented as a list of strings representing the current set of lessons. For example:\n\n"
-                "record_memory_summary(\"\"\"1. <lesson 1>\n2. <lesson 2>\n3. <lesson 3>\"\"\")\n\n"
                 "6. If the Lesson_Recorder_Agent says 'No new memory', do not change the list. Simply re-record the same existing list.\n\n"
                 "7. The updated summary must contain all relevant lessons (including integrated new insights) after your modifications.\n\n"
+                ""
+                "The final output must be a call to record_memory_summary(\"\"\"<updated summary>\"\"\"), where <updated summary> "
+                "is represented as a list of strings representing the current set of lessons. For example:\n\n"
+                "record_memory_summary(\"\"\"1. <lesson 1>\n2. <lesson 2>\n3. <lesson 3>\"\"\")\n\n"
                 "Do not output anything else beyond the single function call. Your entire output should be the function call "
-                "with the updated lessons as a list of strings."
+                "with the updated lessons as a list of strings. If you do not follow the output format exactly, your "
+                "message will not be processed."
             ),
             llm_config=self.llm_config,
             human_input_mode="NEVER",
