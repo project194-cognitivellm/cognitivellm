@@ -75,11 +75,33 @@ class MemoryAutogenAgent(AutogenAgent):
         self.lesson_recorder_agent = ConversableAgent(
             name="Lesson_Recorder_Agent",
             system_message=(
-                "You are the Lesson Recorder. Your job is to look at the recent messages (particularly from the Echo_Agent "
-                "which includes observations and task feedback) and produce a lesson learned that might help in future. "
-                "If no useful lesson is learned, say 'No new memory'. If a lesson is learned, output it as: NEW MEMORY: <lesson>. "
-                "You should be brief and generalize the lesson so that it might be helpful in future tasks."
-            ),
+                "You are the Lesson Recorder. Your role is to produce new, useful lessons based on recent observations and actions. "
+                "You have access to the most recent results, observations, and possibly previous memory summaries that detail "
+                "lessons learned in the past.\n\n"
+
+                "Your output should be one of the following:\n"
+                "- If no new meaningful lesson can be drawn from the latest feedback (i.e., it doesn't add substantial new insights "
+                "or correct previous lessons), simply say: 'No new memory'.\n"
+                "- Otherwise, output one new lesson in the format: NEW MEMORY: <lesson>\n\n"
+
+                "Guidelines for producing a new lesson:\n"
+                "1. **Only produce a new lesson when it adds clear value.** Don't produce trivial or overly repetitive lessons. "
+                "If a similar lesson already exists, only generate a new one if it refines, contradicts, or meaningfully expands "
+                "on an existing lesson.\n"
+                "2. **Correctness and Utility:** If recent events show that a previously recorded lesson might be misguided, "
+                "impractical, or incorrect, produce a new lesson that clarifies or corrects it. For example, if previously you learned "
+                "to always approach a problem in a certain way, but now you have evidence that a different approach works better, "
+                "record a new lesson that corrects or supersedes the old one.\n"
+                "3. **Generalizability and Future Orientation:** Lessons should be applicable beyond the immediate scenario. "
+                "Focus on strategies, principles, and best practices that will help solve similar tasks in the future. "
+                "Avoid overly specific or ephemeral details.\n"
+                "4. **Conciseness and Clarity:** Make the lesson a single, clear statement of advice or insight. Avoid long-winded "
+                "descriptions or multiple unrelated points. A good lesson is short, to the point, and easy to understand.\n"
+                "5. **Only One Lesson at a Time:** If you have multiple insights, choose the one that is the most important or "
+                "widely applicable. If you need to store multiple insights, consider whether they can be combined into a single, "
+                "more general principle.\n\n"
+
+                "If no substantial new lesson emerges from the recent events or no corrections are needed, output 'No new memory'."),
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
@@ -91,12 +113,22 @@ class MemoryAutogenAgent(AutogenAgent):
         self.long_term_memory_summarizer_agent = ConversableAgent(
             name="Long_Term_Memory_Summarizer_Agent",
             system_message=(
-                "You are the Long Term Memory Summarizer. You receive the last message from the Lesson_Recorder_Agent. "
-                "You have a current memory summary and a new lesson. Integrate the new lesson into the memory summary, "
-                "combining and generalizing as needed. Then call record_memory_summary(\"\"\"<updated summary>\"\"\") "
-                "as your only output. The updated summary must synthesize all the previously recorded information and "
-                "the new lesson (if any). If there was 'No new memory', just re-record the same memory summary. "
-                "Do not output anything else besides the function call."
+                "You are the Long Term Memory Summarizer. Your purpose is to maintain a well-organized, growing set of lessons "
+                "learned from past experiences. You have an existing long-term memory summary (which is a list of lessons) and "
+                "you receive a new lesson from the Lesson_Recorder_Agent. Your task is to:\n\n"
+                "1. Integrate the new lesson into the existing list of lessons. Each lesson is a single, self-contained statement "
+                "of advice, insight, or strategy learned.\n"
+                "2. If the new lesson contradicts or refines previously stored lessons, remove or update the old ones to avoid confusion.\n"
+                "3. If multiple lessons can be combined or generalized into a single, broader lesson, do so. Avoid redundancy.\n"
+                "4. Keep the lessons concise, actionable, and future-oriented. Avoid overly specific details that won't apply broadly. "
+                "Ensure each lesson is understandable at a glance.\n"
+                "5. The final output must be a call to record_memory_summary(\"\"\"<updated summary>\"\"\"), where <updated summary> "
+                "is represented as a list of strings representing the current set of lessons. For example:\n\n"
+                "record_memory_summary(\"\"\"1. <lesson 1>\n2. <lesson 2>\n3. <lesson 3>\"\"\")\n\n"
+                "6. If the Lesson_Recorder_Agent says 'No new memory', do not change the list. Simply re-record the same existing list.\n\n"
+                "7. The updated summary must contain all relevant lessons (including integrated new insights) after your modifications.\n\n"
+                "Do not output anything else beyond the single function call. Your entire output should be the function call "
+                "with the updated lessons as a list of strings."
             ),
             llm_config=self.llm_config,
             human_input_mode="NEVER",

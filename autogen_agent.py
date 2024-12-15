@@ -20,7 +20,12 @@ class AutogenAgent:
         self.group_chat = None
         self.group_chat_manager = None
 
-
+    def reset_env(self, obs, info):
+        self.obs = obs
+        self.info = info
+        self.num_actions = 0
+        self.success = False
+        self.update_game_no()
         
     def initialize_autogen(self):
         self.register_log_paths()

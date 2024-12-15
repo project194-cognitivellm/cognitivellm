@@ -100,6 +100,9 @@ if __name__ == "__main__":
                 alfred_env = getattr(environment, config["general"]["evaluate"]["env"]["type"])(config,
                                                                                                 train_eval="eval_out_of_distribution")
                 env = alfred_env.init_env(batch_size=1)
+                obs, info = env.reset()
+                agent = agent_class(env, obs, info, llm_config, log_path=base_path, game_no=0, max_actions=35, args=args)
+                log_paths = agent.get_log_paths()
 
                 ## For each set, there are `num_games` games we need to evaluate
                 num_games = alfred_env.num_games
@@ -107,11 +110,6 @@ if __name__ == "__main__":
 
                 for i in range(num_games):
                     print("Initialized Environment")
-
-                    obs, info = env.reset()
-                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, game_no = i, max_actions=35, args=args)
-
-                    log_paths = agent.get_log_paths()
                     
                     initial_message_content = ""
                     # find the task description in the observation, save it as a txt file.
@@ -204,6 +202,9 @@ if __name__ == "__main__":
                         f.write(f"Success List: {success_list}\n")
                         f.write(f"Chat Round List: {chat_round_list}\n")
                         f.write(f"Num Actions List: {num_actions_list}\n")
+
+                    obs, info = env.reset()
+                    agent.reset_env(obs, info)
                 print(f"Success Rate: {np.sum(success_list)}/{num_games}")
 
 wandb.finish()
