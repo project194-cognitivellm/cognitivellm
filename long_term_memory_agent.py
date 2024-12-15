@@ -94,14 +94,18 @@ class MemoryAutogenAgent(AutogenAgent):
                 "descriptions or multiple unrelated points. A good lesson is short, to the point, and easy to understand.\n"
                 "5. **Only One Lesson at a Time:** If you have multiple insights, choose the one that is the most important or "
                 "widely applicable. If you need to store multiple insights, consider whether they can be combined into a single, "
-                "more general principle.\n\n"
+                "more general principle.\n"
+                "6. **Do Not Doubt Environment:** The environment is always correct. Never doubt the output of the environment. "
+                "Trying the same thing again will never change the result. Do not provide any lesson which suggests this is not the case, "
+                "or that there is some problem with the environment.\n\n"
                 ""
                 "Your output should be one of the following:\n"
                 "- If no new meaningful lesson can be drawn from the latest feedback (i.e., it doesn't add substantial new insights "
                 "or correct previous lessons), simply output: 'No new memory'.\n"
                 "- Otherwise, output one new lesson in the format: 'NEW MEMORY: <lesson>'\n\n"
                 ""
-                "Always follow output formatting exactly, ot your message will not be processed."
+                "Always follow output formatting exactly, or your message will not be processed. Never propose any "
+                "immediate actions in your output. "
             ),
             llm_config=self.llm_config,
             human_input_mode="NEVER",
