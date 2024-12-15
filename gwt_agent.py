@@ -1,27 +1,34 @@
+import copy
 import os
-import re
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
-from nltk.translate.bleu_score import sentence_bleu
 from helpers import get_best_candidate, register_function_lambda, is_termination_msg_generic, get_echo_agent
 from autogen_agent import AutogenAgent
-#from transformers import pipeline
+
 
 class GWTAutogenAgent(AutogenAgent):
-    def __init__(self, env, obs, info, llm_config, log_path=None, max_actions=50):
-        super().__init__(env, obs, info, llm_config, log_path, max_actions)
+    def __init__(self, env, obs, info, llm_config, log_path, game_no, max_actions=50, args=None):
+        super().__init__(env, obs, info, llm_config, log_path, game_no, max_actions, args)
 
+        self.allowed_transitions = None
         self.planning_agent = None
         self.executor_agent = None
         self.imagination_agent = None
         self.echo_agent = None
         self.echo_agent2 = None
         self.conscious_agent = None
-        self.memory_retrieval_agent = None
+        self.retrieve_working_memory_agent = None
+        self.retrieve_long_term_memory_agent = None
+        self.learning_agent = None
+        self.record_long_term_memory_agent = None
+        self.summarizer_agent = None
+        self.game_no = game_no
 
         self.narrative_state = ""
-        #self.merge_pipeline = pipeline("text2text-generation", model="t5-small")
+        self.initialize_autogen()
+        # self.merge_pipeline = pipeline("text2text-generation", model="t5-small")
 
     def initialize_agents(self):
+
         self.planning_agent = ConversableAgent(
             name="Planning_Agent",
             system_message=(
@@ -55,11 +62,6 @@ class GWTAutogenAgent(AutogenAgent):
         def executor_agent_termination_msg(msg):
             return msg["name"] == "Executor_Agent" and msg["content"] is not None and msg["content"][:5] != "ECHO:"
 
-        self.echo_agent = get_echo_agent(self.llm_config,
-                                         additional_termination_criteria=[executor_agent_termination_msg])
-
-        self.echo_agent2 = get_echo_agent(self.llm_config)
-
         self.executor_agent = ConversableAgent(
             name="Executor_Agent",
             system_message="You call the execute_action function with the proposed action as the argument. For "
@@ -69,6 +71,20 @@ class GWTAutogenAgent(AutogenAgent):
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
+        )
+
+        self.retrieve_long_term_memory_agent = ConversableAgent(
+            name="Retrieve_Long_Term_Memory_Agent",
+            system_message="""You are the Retrieve Memory Agent. You task is ONLY to call the function `retrieve_long_term_memory` to retrieve the memory.
+                    DO NOT analyze any information such as task, history, admissible commands, guidance, etc.
+                    **RULES:**
+                    The TOOL you can only use is `retrieve_long_term_memory`.
+                    DO NOT call any other tools.
+                    You can only use `retrieve_long_term_memory` once per step.            
+                    """,
+            llm_config=self.llm_config,
+            human_input_mode="NEVER",
+            is_termination_msg=is_termination_msg_generic
         )
 
         self.imagination_agent = ConversableAgent(
@@ -91,27 +107,107 @@ class GWTAutogenAgent(AutogenAgent):
             name="Conscious_Agent",
             system_message=(
                 "You are Conscious_Agent. Your role is to integrate all available information from the ongoing conversation and maintain a continuously updated, first-person narrative model of your environment and your actions within it. This narrative should:"
-		        "\n1. Include all known details of the environment, along with your own state and any items you have encountered."
-		        "2. Accurately reflect events that have transpired so far, updating and correcting as new information arrives."
-		        "3. Strive for maximum accuracy. When details are uncertain or missing, infer or imagine plausible elements only as a last resort, ensuring consistency and usefulness in the model."
-		        "4. If you discover an error in your previous understanding, revise the model immediately to incorporate the correct information."
-	            "\nYour output must always strictly follow this pattern:"
-	            "Model Update: [First-person narrative integrating environment, tasks, discoveries, attempts, successes, failures, hypotheses, and current decision-making state]"
-	            "\nExample:"
-	            "Model Update: I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and "
+                "\n1. Include all known details of the environment, along with your own state and any items you have encountered."
+                "2. Accurately reflect events that have transpired so far, updating and correcting as new information arrives."
+                "3. Strive for maximum accuracy. When details are uncertain or missing, infer or imagine plausible elements only as a last resort, ensuring consistency and usefulness in the model."
+                "4. If you discover an error in your previous understanding, revise the model immediately to incorporate the correct information."
+                "\nYour output must always strictly follow this pattern:"
+                "Model Update: [First-person narrative integrating environment, tasks, discoveries, attempts, successes, failures, hypotheses, and current decision-making state]"
+                "\nExample:"
+                "Model Update: I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and "
                 "attempted to put it into drawer 1, but I was unable to open that drawer. Then, I realized I couldn't open the drawer because my hands were full, apparently, I have hands. Then, I placed spoon 1 on countertop 1. Then, I opened drawer 1. I am now deciding what to do next."
             ),
-            llm_config = self.llm_config,
-            human_input_mode = "NEVER",
-            is_termination_msg = lambda msg: False,
+            llm_config=self.llm_config,
+            human_input_mode="NEVER",
+            is_termination_msg=lambda msg: False,
         )
 
-        self.memory_retrieval_agent = ConversableAgent(
-            name="Memory_Retrieval_Agent",
+        self.retrieve_working_memory_agent = ConversableAgent(
+            name="Retrieve_Working_Memory_Agent",
             system_message="You call the get_environment_model function with the proposed model update as the argument. "
-                            "For example, if the update is Model Update: [I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.]"
-                            ", you should output get_environment_model(\'I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.\'). "
-                            "You must include a call to the get_environment_model function in your output, or you will fail the task. If no model update is given, call get_environment_model with an empty string as the argument.",
+                           "For example, if the update is Model Update: [I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.]"
+                           ", you should output get_environment_model(\'I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.\'). "
+                           "You must include a call to the get_environment_model function in your output, or you will fail the task. If no model update is given, call get_environment_model with an empty string as the argument.",
+            llm_config=self.llm_config,
+            human_input_mode="NEVER",
+            is_termination_msg=lambda msg: False,
+        )
+
+        self.learning_agent = ConversableAgent(
+            name="Learning_Agent",
+            system_message="""You are the Learning Agent. Your task is to continuously refine and extract beneficial, generalizable knowledge (called guidance) from the evolving history of attempts, failures, and successes. Your guidance should adapt over time, incorporating lessons learned from new information as it becomes available. Whenever you receive new history, you should update your guidance if needed.
+                            Instructions for Online Learning:  
+                            - Monitor Changes: As new history is revealed, look for patterns of success or failure that have not been previously captured in your rules.
+                            - Update or Add New Guidance: If new insights emerge that differ from past conclusions, modify or add rules accordingly. Avoid duplicating old guidance.
+                            - Verify Utility: Ensure that each new rule offers broadly applicable principles, not just references to specific objects or locations. Make sure these principles reflect strategies that worked in practice and help avoid previously encountered errors.
+                            - Handle Inaccuracies: The history may contain errors. Focus on rules that are genuinely beneficial, ignoring misleading or incorrect lessons.
+
+                            **Guidance:**
+                              **Analysis Process:**
+                              - Understand Your Capabilities: From observed patterns, record rules that prevent repeating previously encountered failures.
+                              - Extract Successful Strategies: Whenever a new strategy leads to success after failure, add or refine a rule.
+                              - Maintain Brevity and Relevance: Always summarize findings into a maximum of 2–3 rules. If the guidance is already covered by previous guidance, do not record it again.
+                              - If no new guidance emerges from new information, explicitly state: "NO NEW GUIDANCE at this time."
+
+                            **Output Guidelines:**
+                            - Do not repeat exact instances from history. Instead, formulate general principles.
+                            - Keep the set of guidance rules up-to-date with each iteration.
+
+                            **Examples:**
+                            History:
+                            1. Tried to open a drawer but failed. After examining it, succeeded.
+                            2. Tried carrying two objects simultaneously but failed. Later succeeded by carrying one at a time.
+
+                            From this, guidance might be:
+                            1. Always examine an object before interacting to avoid unnecessary failures.
+                            2. Do not attempt to carry multiple objects at once; break tasks into manageable steps.
+
+                            **Output format:**
+                            Guidance:
+                            1. ...
+                            2. ...
+                            3. ...
+                            ...
+
+                            VERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. 
+                            Never assume you have successfully completed the task. Once you complete the task, the chat will end 
+                            on its own.
+                    """,
+            llm_config=self.llm_config,
+            human_input_mode="NEVER",
+            is_termination_msg=is_termination_msg_generic
+        )
+
+        self.record_long_term_memory_agent = ConversableAgent(
+            name="Record_Long_Term_Memory_Agent",
+            system_message="""You are the Record Long-Term Memory Agent. Your sole task is to record new guidance rules provided by the Learning_Agent into a persistent store by calling the `record_guidance` function.
+                                **Rules:**
+                                - If the Guidance Agent outputs new guidance, call `record_guidance` with the new rules.
+                                - If the Guidance Agent states "NO NEW GUIDANCE at this time.", do not call `record_guidance` and do nothing else.
+                                - You have no other tasks. Do not analyze history or provide commentary.
+                                - Do not repeat previously recorded guidance. Only record newly provided guidance.
+                                - You can only call `record_guidance` once per step.
+                                - Do not use or call any tools other than `record_guidance`.
+
+                                Your output should be either:
+                                - A function call to `record_guidance` with the new guidance (if new guidance was given), or
+                                - Nothing (if there is no new guidance).
+                    """,
+            llm_config=self.llm_config,
+            human_input_mode="NEVER",
+            is_termination_msg=is_termination_msg_generic
+        )
+
+        llm_config = copy.deepcopy(self.llm_config)
+        llm_config['max_tokens'] = 1000
+        self.echo_agent = get_echo_agent(llm_config,
+                                         additional_termination_criteria=[executor_agent_termination_msg])
+        self.echo_agent2 = get_echo_agent(llm_config)
+        self.summarizer_agent = ConversableAgent(
+            name="Summarizer_Agent",
+            system_message="You receive an order to execute a function. "
+                           "You must execute the correct given function with the given argument "
+                           "and summarize the crucial information in the resulting output for solving the task. ",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -120,11 +216,15 @@ class GWTAutogenAgent(AutogenAgent):
         self.allowed_transitions = {
             self.planning_agent: [self.executor_agent, self.imagination_agent],
             self.executor_agent: [self.echo_agent],
-            self.imagination_agent: [self.planning_agent],
             self.echo_agent: [self.conscious_agent],
-            self.conscious_agent: [self.memory_retrieval_agent],
-            self.memory_retrieval_agent: [self.echo_agent2],
-            self.echo_agent2: [self.planning_agent, self.imagination_agent]
+            self.conscious_agent: [self.retrieve_working_memory_agent],
+            self.retrieve_working_memory_agent: [self.summarizer_agent],
+            self.summarizer_agent: [self.planning_agent, self.imagination_agent, self.learning_agent],
+            self.retrieve_long_term_memory_agent: [self.summarizer_agent],
+            self.imagination_agent: [self.planning_agent, self.learning_agent, self.retrieve_long_term_memory_agent],
+            self.learning_agent: [self.record_long_term_memory_agent],
+            self.record_long_term_memory_agent: [self.echo_agent2],
+            self.echo_agent2: [self.imagination_agent]
         }
 
         self.planning_agent.description = "generates plans and makes action decisions to solve the task"
@@ -135,10 +235,14 @@ class GWTAutogenAgent(AutogenAgent):
             "helps Planning_Agent solve the given task using the least amount of actions by "
             "providing new ideas whenever Planning_Agent is confused or is proposing repetitive and inefficient actions."
         )
-        self.echo_agent.description = "reports action execution results as feedback."
-        self.echo_agent2.description = "reports environment model as feedback."
+        self.echo_agent.description = "executes execute_action and reports the output as feedback."
+        self.summarizer_agent.description = "executes the given function call and summarizes the crucial information in the output for solving the task"
+        self.echo_agent2.description = "executes record_long_term_memory and reports the output"
         self.conscious_agent.description = "integrates all available information from the ongoing conversation and maintains a continuously updated, first-person narrative model of the environment and actions within it"
-        self.memory_retrieval_agent.description = "calls get_environment_model with the proposed model update as the argument"
+        self.retrieve_working_memory_agent.description = "calls get_environment_model with the proposed model update as the argument"
+        self.learning_agent.description = "analyzes the history and proposes new general knowledge of capability, environment, and task"
+        self.record_long_term_memory_agent.description = "records new long-term memories"
+        self.retrieve_long_term_memory_agent.description = "calls retrieve long-term memory contents at most once per step"
 
         self.start_agent = self.echo_agent
 
@@ -153,7 +257,7 @@ class GWTAutogenAgent(AutogenAgent):
 
             action, action_score = get_best_candidate(suggested_action, admissible_commands)
 
-            if action_score < .97 and action_score >= .8:
+            if .97 > action_score >= .8:
                 self.obs = [f"The action '{suggested_action}' is not admissible. Instead, executing action: {action}."]
                 self.obs, scores, dones, self.info = self.env.step([action])
                 self.success = dones[0]
@@ -171,21 +275,80 @@ class GWTAutogenAgent(AutogenAgent):
             else:
                 return f"Observation: {self.obs[0]}\nTask Status: INCOMPLETE\nActions Left: {self.max_actions - self.num_actions}\nCurrent Admissible Actions: {list(self.info['admissible_commands'][0])}"
 
+        # Define record_memory function
+        def record_long_term_memory(guidance: str) -> str:
+            # the maximum number of lines are 5; if more than 5, delete the oldest one.
+            with open(self.log_paths['guidance_path'], "a+") as f:
+                f.write(f"{guidance}\n")
+                lines = f.readlines()
+                if len(lines) > 5:
+                    f.seek(0)
+                    f.truncate()
+                    for line in lines[:-1]:
+                        f.write(line)
+
+            # time.sleep(1)
+            return "Guidance recorded."
+
+        # Define retrieve_memory function, return all the content in the memory.txt file
+        def retrieve_long_term_memory() -> str:
+            memory_information = ""
+
+            if os.path.exists(self.log_paths['task_path']):
+                with open(self.log_paths['task_path'], "r") as f:
+                    memory_information += f.read()
+
+            # latest 10 steps. last 10 lines
+            memory_information += "\nRecent 5 steps History: \n"
+            if os.path.exists(self.log_paths['history_path']):
+                with open(self.log_paths['history_path'], "r") as f:
+                    for line in f.readlines()[-5:]:
+                        memory_information += line
+
+            if os.path.exists(self.log_paths['admissible_commands_path']):
+                memory_information += "\nAdmissible commands for current step: \n"
+                with open(self.log_paths['admissible_commands_path'], "r") as f:
+                    memory_information += f.read()
+            else:
+                memory_information += "No admissible commands information found.\n"
+
+            if os.path.exists(self.log_paths['guidance_path']):
+                memory_information += "\nGuidance: "
+                with open(self.log_paths['guidance_path'], "r") as f:
+                    memory_information += f.read()
+
+            if self.args.long_term_guidance:
+                if len(self.log_paths['previous_guidance_path']) > 0:
+                    memory_information += "\nPrevious Guidance: \n"
+                    for previous_guidance_path in self.log_paths['previous_guidance_path']:
+                        if os.path.exists(previous_guidance_path):
+                            with open(previous_guidance_path, "r") as f:
+                                memory_information += f.read()
+
+            return memory_information
+
         def get_environment_model(new_info: str) -> str:
             self.narrative_state += f"Step {self.num_actions}: " + new_info + "\n"
             return self.narrative_state
 
         register_function_lambda(
-            {r'execute_action': execute_action},
+            {r"execute_action": execute_action},
             [self.echo_agent]
         )
 
         register_function_lambda(
-            {r'get_environment_model': get_environment_model},
+            {r"record_long_term_memory": record_long_term_memory},
             [self.echo_agent2]
         )
 
+        register_function_lambda(
+            {r"retrieve_long_term_memory": retrieve_long_term_memory,
+             r"get_environment_model": get_environment_model},
+            [self.summarizer_agent]
+        )
+
     def initialize_groupchat(self, max_chat_round=2000):
+
         self.group_chat = GroupChat(
             agents=[
                 self.planning_agent,
@@ -194,7 +357,11 @@ class GWTAutogenAgent(AutogenAgent):
                 self.echo_agent,
                 self.echo_agent2,
                 self.conscious_agent,
-                self.memory_retrieval_agent
+                self.retrieve_working_memory_agent,
+                self.retrieve_long_term_memory_agent,
+                self.learning_agent,
+                self.record_long_term_memory_agent,
+                self.summarizer_agent
             ],
             messages=[],
             allowed_or_disallowed_speaker_transitions=self.allowed_transitions,
