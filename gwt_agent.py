@@ -21,6 +21,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.learning_agent = None
         self.record_long_term_memory_agent = None
         self.summarizer_agent = None
+        self.summarizer_agent2 = None
         self.game_no = game_no
 
         self.narrative_state = ""
@@ -93,7 +94,7 @@ class GWTAutogenAgent(AutogenAgent):
                 "Your goal is to help Planning_Agent solve the given task by "
                 "providing new ideas, theories, explanations, and hypotheses whenever Planning_Agent is confused or is proposing repetitive actions."
                 "Example Output: (After taking spoon 1)"
-                "\nI noticed we were holding spoon 1 when we tried to open the drawer. Maybe the reason we couldn't open the drawer is because our hands are full. We need to place the spoon 1 somewhere before attempting to open the drawer again"
+                "\nI noticed we were holding spoon 1 when we tried to open the drawer. Maybe the reason we couldn't open the drawer is because our hands are full. We need to place the spoon 1 somewhere before attempting to open the drawer again."
                 "VERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
                 "Never assume you have successfully completed the task. Once you complete the task, the chat will end "
                 "on its own."
@@ -180,17 +181,17 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.record_long_term_memory_agent = ConversableAgent(
             name="Record_Long_Term_Memory_Agent",
-            system_message="""You are the Record Long-Term Memory Agent. Your sole task is to record new guidance rules provided by the Learning_Agent into a persistent store by calling the `record_guidance` function.
+            system_message="""You are the Record Long-Term Memory Agent. Your sole task is to record new guidance rules provided by the Learning_Agent into a persistent store by calling the `record_long_term_memory` function.
                                 **Rules:**
-                                - If the Guidance Agent outputs new guidance, call `record_guidance` with the new rules.
-                                - If the Guidance Agent states "NO NEW GUIDANCE at this time.", do not call `record_guidance` and do nothing else.
+                                - If the Guidance Agent outputs new guidance, call `record_long_term_memory` with the new rules.
+                                - If the Guidance Agent states "NO NEW GUIDANCE at this time.", do not call `record_long_term_memory` and do nothing else.
                                 - You have no other tasks. Do not analyze history or provide commentary.
                                 - Do not repeat previously recorded guidance. Only record newly provided guidance.
-                                - You can only call `record_guidance` once per step.
-                                - Do not use or call any tools other than `record_guidance`.
+                                - You can only call `record_long_term_memory` once per step.
+                                - Do not use or call any tools other than `record_long_term_memory`.
 
                                 Your output should be either:
-                                - A function call to `record_guidance` with the new guidance (if new guidance was given), or
+                                - A function call to `record_long_term_memory` with the new guidance (if new guidance was given), or
                                 - Nothing (if there is no new guidance).
                     """,
             llm_config=self.llm_config,
@@ -212,6 +213,15 @@ class GWTAutogenAgent(AutogenAgent):
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
         )
+        self.summarizer_agent2 = ConversableAgent(
+            name="Summarizer_Agent2",
+            system_message="You receive an order to execute a function. "
+                           "You must execute the correct given function with the given argument "
+                           "and summarize the crucial information in the resulting output for solving the task. ",
+            llm_config=self.llm_config,
+            human_input_mode="NEVER",
+            is_termination_msg=lambda msg: False,
+        )
 
         self.allowed_transitions = {
             self.planning_agent: [self.executor_agent, self.imagination_agent],
@@ -219,8 +229,9 @@ class GWTAutogenAgent(AutogenAgent):
             self.echo_agent: [self.conscious_agent],
             self.conscious_agent: [self.retrieve_working_memory_agent],
             self.retrieve_working_memory_agent: [self.summarizer_agent],
+            self.summarizer_agent2: [self.planning_agent, self.imagination_agent, self.learning_agent],
             self.summarizer_agent: [self.planning_agent, self.imagination_agent, self.learning_agent],
-            self.retrieve_long_term_memory_agent: [self.summarizer_agent],
+            self.retrieve_long_term_memory_agent: [self.summarizer_agent2],
             self.imagination_agent: [self.planning_agent, self.learning_agent, self.retrieve_long_term_memory_agent],
             self.learning_agent: [self.record_long_term_memory_agent],
             self.record_long_term_memory_agent: [self.echo_agent2],
@@ -237,6 +248,7 @@ class GWTAutogenAgent(AutogenAgent):
         )
         self.echo_agent.description = "executes execute_action and reports the output as feedback."
         self.summarizer_agent.description = "executes the given function call and summarizes the crucial information in the output for solving the task"
+        self.summarizer_agent2.description = "executes the given function call and summarizes the crucial information in the output for solving the task"
         self.echo_agent2.description = "executes record_long_term_memory and reports the output"
         self.conscious_agent.description = "integrates all available information from the ongoing conversation and maintains a continuously updated, first-person narrative model of the environment and actions within it"
         self.retrieve_working_memory_agent.description = "calls get_environment_model with the proposed model update as the argument"
@@ -342,9 +354,13 @@ class GWTAutogenAgent(AutogenAgent):
         )
 
         register_function_lambda(
-            {r"retrieve_long_term_memory": retrieve_long_term_memory,
-             r"get_environment_model": get_environment_model},
+            {r"get_environment_model": get_environment_model},
             [self.summarizer_agent]
+        )
+
+        register_function_lambda(
+            {r"retrieve_long_term_memory": retrieve_long_term_memory},
+            [self.summarizer_agent2]
         )
 
     def initialize_groupchat(self, max_chat_round=2000):
@@ -361,7 +377,8 @@ class GWTAutogenAgent(AutogenAgent):
                 self.retrieve_long_term_memory_agent,
                 self.learning_agent,
                 self.record_long_term_memory_agent,
-                self.summarizer_agent
+                self.summarizer_agent,
+                self.summarizer_agent2
             ],
             messages=[],
             allowed_or_disallowed_speaker_transitions=self.allowed_transitions,
