@@ -10,19 +10,20 @@ class GWTAutogenAgent(AutogenAgent):
         super().__init__(env, obs, info, llm_config, log_path, game_no, max_actions, args)
 
         self.allowed_transitions = None
+
         self.planning_agent = None
         self.motor_agent = None
         self.imagination_agent = None
         self.external_perception_agent = None
         self.internal_perception_agent = None
         self.conscious_agent = None
-        self.retrieve_working_memory_agent = None
+        self.update_and_retrieve_working_memory_agent = None
         self.retrieve_long_term_memory_agent = None
         self.learning_agent = None
         self.record_long_term_memory_agent = None
         self.system_2_summarizer_agent_STM = None
         self.system_2_summarizer_agent_LTM = None
-        #Correction: Chat Manager is System_1 (Intuition)
+
         self.game_no = game_no
 
         self.narrative_state = ""
@@ -87,7 +88,7 @@ class GWTAutogenAgent(AutogenAgent):
                            "on its own. If you do not provide an action suggestion, you will fail the task.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
-            is_termination_msg=is_termination_msg_generic
+            is_termination_msg=lambda msg: False,
         )
 
         self.imagination_agent = ConversableAgent(
@@ -122,15 +123,15 @@ class GWTAutogenAgent(AutogenAgent):
             ),
             llm_config=self.llm_config,
             human_input_mode="NEVER",
-            is_termination_msg=lambda msg: False,
+            is_termination_msg=is_termination_msg_generic,
         )
 
-        self.retrieve_working_memory_agent = ConversableAgent(
-            name="Retrieve_Working_Memory_Agent",
-            system_message="You call the get_environment_model function with the proposed model update as the argument. "
+        self.update_and_retrieve_working_memory_agent = ConversableAgent(
+            name="Update_And_Retrieve_Working_Memory_Agent",
+            system_message="You call the update_and_retrieve_working_memory function with the proposed model update as the argument. "
                            "For example, if the update is Model Update: [I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.]"
-                           ", you should output get_environment_model(\'I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.\'). "
-                           "You must include a call to the get_environment_model function in your output, or you will fail the task. If no model update is given, call get_environment_model with an empty string as the argument.",
+                           ", you should output update_and_retrieve_working_memory(\'I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.\'). "
+                           "You must include a call to the update_and_retrieve_working_memory function in your output, or you will fail the task. If no model update is given, call update_and_retrieve_working_memory with an empty string as the argument.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -178,12 +179,12 @@ class GWTAutogenAgent(AutogenAgent):
                     """,
             llm_config=self.llm_config,
             human_input_mode="NEVER",
-            is_termination_msg=is_termination_msg_generic
+            is_termination_msg=lambda msg: False
         )
 
         self.record_long_term_memory_agent = ConversableAgent(
             name="Record_Long_Term_Memory_Agent",
-            system_message="""You are the Record Long-Term Memory Agent. Your sole task is to record new guidance rules provided by the Learning_Agent into a persistent store by calling the `record_long_term_memory` function.
+            system_message="""You are the Record Long-Term Memory Agent. Your sole task is to record new guidance rules provided by the Learning_Agent into a persistent storage by calling the `record_long_term_memory` function.
                                 **Rules:**
                                 - If the Guidance Agent outputs new guidance, call `record_long_term_memory` with the new rules.
                                 - If the Guidance Agent states "NO NEW GUIDANCE at this time.", do not call `record_long_term_memory` and do nothing else.
@@ -198,7 +199,7 @@ class GWTAutogenAgent(AutogenAgent):
                     """,
             llm_config=self.llm_config,
             human_input_mode="NEVER",
-            is_termination_msg=is_termination_msg_generic
+            is_termination_msg=lambda msg: False
         )
 
         llm_config = copy.deepcopy(self.llm_config)
@@ -209,7 +210,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.system_2_summarizer_agent_STM = ConversableAgent(
             name="System_2_Summarizer_Agent",
-            system_message="You execute retrieve_working_memory and summarize the crucial information in the output for solving the task.",
+            system_message="You execute update_and_retrieve_working_memory and summarize the crucial information in the output for solving the task.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -226,34 +227,37 @@ class GWTAutogenAgent(AutogenAgent):
             self.planning_agent: [self.motor_agent, self.imagination_agent, self.retrieve_long_term_memory_agent],
             self.motor_agent: [self.external_perception_agent],
             self.external_perception_agent: [self.conscious_agent],
-            self.conscious_agent: [self.retrieve_working_memory_agent],
-            self.retrieve_working_memory_agent: [self.system_2_summarizer_agent_STM],
+            self.conscious_agent: [self.update_and_retrieve_working_memory_agent],
+            self.update_and_retrieve_working_memory_agent: [self.system_2_summarizer_agent_STM],
             self.system_2_summarizer_agent_LTM: [self.planning_agent, self.imagination_agent, self.learning_agent],
             self.system_2_summarizer_agent_STM: [self.planning_agent, self.imagination_agent, self.learning_agent],
             self.retrieve_long_term_memory_agent: [self.system_2_summarizer_agent_LTM],
             self.imagination_agent: [self.planning_agent, self.learning_agent, self.retrieve_long_term_memory_agent],
-            self.learning_agent: [self.record_long_term_memory_agent, self.retrieve_long_term_memory_agent],
+            self.learning_agent: [self.record_long_term_memory_agent],
             self.record_long_term_memory_agent: [self.internal_perception_agent],
             self.internal_perception_agent: [self.imagination_agent]
         }
 
-        self.planning_agent.description = "generates plans and makes action decisions to solve the task"
         self.motor_agent.description = (
             "calls execute_action with the proposed action as the argument to perform the suggested action"
         )
+        self.external_perception_agent.description = "executes execute_action and reports the output as feedback."
+        self.conscious_agent.description = "integrates all available information from the ongoing conversation and maintains a continuously updated, first-person narrative model of the environment and actions within it"
+        self.update_and_retrieve_working_memory_agent.description = "calls update_and_retrieve_working_memory with the proposed model update as the argument"
+        self.system_2_summarizer_agent_STM.description = "executes update_and_retrieve_working_memory and summarizes the crucial information in the output for solving the task"
+
+        self.planning_agent.description = "generates plans and makes action decisions to solve the task"
         self.imagination_agent.description = (
             "helps Planning_Agent solve the given task using the least amount of actions by "
             "providing new ideas whenever Planning_Agent is confused or is proposing repetitive and inefficient actions."
         )
-        self.external_perception_agent.description = "executes execute_action and reports the output as feedback."
-        self.system_2_summarizer_agent_STM.description = "executes retrieve_working_memory and summarizes the crucial information in the output for solving the task"
-        self.system_2_summarizer_agent_LTM.description = "executes retrieve_long_term_memory and summarizes the crucial information in the output for solving the task"
+        self.learning_agent.description = "analyzes the history and proposes new general knowledge of capability, the environment, and the task"
+
+        self.record_long_term_memory_agent.description = "calls the record_long_term_memory function with the correct arguments"
         self.internal_perception_agent.description = "executes record_long_term_memory and reports the output"
-        self.conscious_agent.description = "integrates all available information from the ongoing conversation and maintains a continuously updated, first-person narrative model of the environment and actions within it"
-        self.retrieve_working_memory_agent.description = "calls get_environment_model with the proposed model update as the argument"
-        self.learning_agent.description = "analyzes the history and proposes new general knowledge of capability, environment, and task"
-        self.record_long_term_memory_agent.description = "records new long-term memories"
-        self.retrieve_long_term_memory_agent.description = "calls retrieve long-term memory contents at most once per step"
+
+        self.retrieve_long_term_memory_agent.description = "calls retrieve_long_term_memory with no arguments"
+        self.system_2_summarizer_agent_LTM.description = "executes retrieve_long_term_memory and summarizes the crucial information in the output for solving the task"
 
         self.start_agent = self.external_perception_agent
 
@@ -338,7 +342,7 @@ class GWTAutogenAgent(AutogenAgent):
 
             return memory_information
 
-        def get_environment_model(new_info: str) -> str:
+        def update_and_retrieve_working_memory(new_info: str) -> str:
             self.narrative_state += f"Step {self.num_actions}: " + new_info + "\n"
             return self.narrative_state
 
@@ -353,7 +357,7 @@ class GWTAutogenAgent(AutogenAgent):
         )
 
         register_function_lambda(
-            {r"get_environment_model": get_environment_model},
+            {r"update_and_retrieve_working_memory": update_and_retrieve_working_memory},
             [self.system_2_summarizer_agent_STM]
         )
 
@@ -372,7 +376,7 @@ class GWTAutogenAgent(AutogenAgent):
                 self.external_perception_agent,
                 self.internal_perception_agent,
                 self.conscious_agent,
-                self.retrieve_working_memory_agent,
+                self.update_and_retrieve_working_memory_agent,
                 self.retrieve_long_term_memory_agent,
                 self.learning_agent,
                 self.record_long_term_memory_agent,
