@@ -196,7 +196,8 @@ class MemoryAutogenAgent(AutogenAgent):
         register_function_lambda(
             {r'get_recorded_memory': get_recorded_memory},
             [self.long_term_memory_summarizer_agent],
-            last_message_only=True, append_echo=True, echo_signifier="Previous Memory Summary:"
+            last_message_only=True, append_echo=True, echo_signifier="Previous Memory Summary:",
+            search_for_tool_call=False
         )
 
     def initialize_groupchat(self, max_chat_round=2000):

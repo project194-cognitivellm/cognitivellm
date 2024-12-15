@@ -35,7 +35,7 @@ def parse_tool_call(tool_call_string: str) -> Tuple[str, Tuple]:
 
 class MessageToolCall:
     def __init__(self, tool_dict: Dict[str, Callable], last_message_only: bool = False, append_echo: bool = False,
-                 echo_signifier: str = "ECHO: "):
+                 echo_signifier: str = "ECHO: ", search_for_tool_call: bool = True):
         # Ensure all values in tool_dict are callable.
         self.tool_dict = tool_dict
         for _, tool in tool_dict.items():
@@ -44,6 +44,7 @@ class MessageToolCall:
         self.last_message_only = last_message_only
         self.append_echo = append_echo
         self.echo_signifier = echo_signifier
+        self.search_for_tool_call = search_for_tool_call
 
     def _transform_text_content(self, text: str) -> str:
         """
@@ -51,29 +52,39 @@ class MessageToolCall:
         defined in self.tool_dict.
         """
         # For each tool_name, repeatedly find and replace all calls
-        for tool_name, func in self.tool_dict.items():
-            # Build a pattern that matches this specific tool call
-            # Note: The non-greedy .*? is used to match minimal parameters
-            # While still allowing multiple calls.
-            pattern = rf"{re.escape(tool_name)}\(([\S\s]*?)\)"
+        if self.search_for_tool_call:
+            for tool_name, func in self.tool_dict.items():
+                # Build a pattern that matches this specific tool call
+                # Note: The non-greedy .*? is used to match minimal parameters
+                # While still allowing multiple calls.
+                pattern = rf"{re.escape(tool_name)}\(([\S\s]*?)\)"
 
-            match = re.search(pattern, text)
-            if not match:
-                # No more occurrences of this tool
-                continue
-            # Extract the full matched substring
-            full_call_str = text[match.start():match.end()]
-            # Parse it
-            parsed_tool_name, args = parse_tool_call(full_call_str)
-            if parsed_tool_name == tool_name:
-                result = func(*args)
+                match = re.search(pattern, text)
+                if not match:
+                    # No more occurrences of this tool
+                    continue
+                # Extract the full matched substring
+                full_call_str = text[match.start():match.end()]
+                # Parse it
+                parsed_tool_name, args = parse_tool_call(full_call_str)
+                if parsed_tool_name == tool_name:
+                    result = func(*args)
+                    if self.append_echo:
+                        return f"{text}\n\n{self.echo_signifier}{result}"
+                    else:
+                        return f"{self.echo_signifier}{result}"
+                else:
+                    # If somehow parsing didn't match the tool_name, break to avoid infinite loop
+                    raise ValueError(f"Tool name mismatch: {parsed_tool_name} != {tool_name}")
+        else:
+            # TODO: This is all kind of shabby. I assume in this section that we just have a parameterless tool call
+            # TODO: whose input we just want to add to the text.
+            for tool_name, func in self.tool_dict.items():
+                result = func()
                 if self.append_echo:
                     return f"{text}\n\n{self.echo_signifier}{result}"
                 else:
                     return f"{self.echo_signifier}{result}"
-            else:
-                # If somehow parsing didn't match the tool_name, break to avoid infinite loop
-                raise ValueError(f"Tool name mismatch: {parsed_tool_name} != {tool_name}")
         return text
 
     def apply_transform(self, messages: List[Dict]) -> List[Dict]:
@@ -109,9 +120,9 @@ class MessageToolCall:
 
 def register_function_lambda(tool_dict: Dict[str, Callable], agents: List[ConversableAgent],
                              last_message_only: bool = False, append_echo: bool = False,
-                             echo_signifier: str = "ECHO: "):
+                             echo_signifier: str = "ECHO: ", search_for_tool_call: bool = True):
     tool_handling = transform_messages.TransformMessages(
-        transforms=[MessageToolCall(tool_dict, last_message_only, append_echo, echo_signifier)])
+        transforms=[MessageToolCall(tool_dict, last_message_only, append_echo, echo_signifier, search_for_tool_call)])
     for agent in agents:
         tool_handling.add_to_agent(agent)
 
