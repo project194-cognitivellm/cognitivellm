@@ -30,6 +30,11 @@ def parse_arguments():
         action="store_true",
         help="Use the GWTAutogenAgent for evaluation."
     )
+    parser.add_argument(
+        "--long_term_guidance",
+        action="store_true",
+        help="Use long term guidance."
+    )
     return parser.parse_args()
 
 
@@ -39,7 +44,7 @@ if __name__ == "__main__":
     if args.baseline:
         agent_class = BaselineAutogenAgent
         agent_name = "BaselineAutogenAgent"
-    elif args.cognitive:
+    elif args.gwt:
         agent_class = GWTAutogenAgent
         agent_name = "GWTAutogenAgent"
     else:
@@ -49,7 +54,7 @@ if __name__ == "__main__":
     with open(args.config_file) as reader:
         config = yaml.safe_load(reader)
 
-    wandb.init(project="cognitive-agents", entity="cog-llm")
+    wandb.init(project="cogllm")
 
     API_KEY = os.environ.get("LAMBDA_API_KEY")
     BASE_URL = "https://api.lambdalabs.com/v1"
@@ -73,6 +78,7 @@ if __name__ == "__main__":
 
     result_list_path = os.path.join(base_path, "result_list.txt")
     chat_round_list = []
+    num_actions_list = []
 
     for eval_env_type in eval_envs:
         for controller_type in (controllers if eval_env_type == "AlfredThorEnv" else ["tw"]):
@@ -94,11 +100,10 @@ if __name__ == "__main__":
                     print("Initialized Environment")
 
                     obs, info = env.reset()
-                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, max_actions=35)
-                    agent.update_game_no(i)
+                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, game_no = i, max_actions=35, args=args)
 
                     log_paths = agent.get_log_paths()
-
+                    
                     initial_message_content = ""
                     # find the task description in the observation, save it as a txt file.
                     task_description = obs[0].split("Your task is to: ")[1]
@@ -109,16 +114,16 @@ if __name__ == "__main__":
                     initial_message_content += f"Task: {task_description}\n"
 
                     with open(log_paths['history_path'], "w") as f:
-                        f.write(f"action: [None] observation: [{initial_observation}]\n")
+                        f.write(f"action: 'None'. observation: '{initial_observation}'\n")
 
                     initial_message_content += f"Observation: {initial_observation}\n"
 
+
+                    # save the admissible commands into a txt file
                     admissible_commands = list(info['admissible_commands'][0])
-                    # save the addmissible commands into a txt file
                     with open(log_paths['admissible_commands_path'], "w") as f:
                         f.write(f"{admissible_commands}\n")
-
-                    initial_message_content += f"Admissible commands: {admissible_commands}\n"
+                    initial_message_content += f"Admissible actions: {admissible_commands}\n"
 
                     run_chat = True
 
@@ -169,13 +174,16 @@ if __name__ == "__main__":
                     else:
                         chat_round_list.append(-1)
 
-                    # exit()
-
                     success = agent.success
                     print(f'Success: {success}')
                     success_list.append(success)
-
-                    wandb.log({"success": success, "success_rate": np.sum(success_list) / len(success_list)})
+                    num_actions_list.append(agent.num_actions)
+                    wandb.log({"success": int(success), 
+                               "success_rate": np.sum(success_list) / len(success_list),
+                               "chat_round": chat_round_list[-1],
+                               "game_no": i,
+                               "num_actions": agent.num_actions,
+                               })
 
                     # save success and chat_round into a txt file
                     with open(log_paths['result_path'], "w") as f:
@@ -186,7 +194,7 @@ if __name__ == "__main__":
                     with open(result_list_path, "w") as f:
                         f.write(f"Success List: {success_list}\n")
                         f.write(f"Chat Round List: {chat_round_list}\n")
-
+                        f.write(f"Num Actions List: {num_actions_list}\n")
                 print(f"Success Rate: {np.sum(success_list)}/{num_games}")
 
 wandb.finish()

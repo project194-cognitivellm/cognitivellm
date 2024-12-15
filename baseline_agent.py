@@ -7,13 +7,10 @@ from autogen_agent import AutogenAgent
 
 
 class BaselineAutogenAgent(AutogenAgent):
-    def __init__(self, env, obs, info, llm_config, log_path=None, max_actions=50):
-        super().__init__(env, obs, info, llm_config, log_path, max_actions)
+    def __init__(self, env, obs, info, llm_config, log_path, game_no, max_actions=50, args=None):
+        super().__init__(env, obs, info, llm_config, log_path, game_no, max_actions, args)
 
-        self.assistant_agent = None
-        self.executor_agent = None
-        self.grounding_agent = None
-        self.echo_agent = None
+        self.initialize_autogen()
 
     def initialize_agents(self):
         self.assistant_agent = ConversableAgent(
