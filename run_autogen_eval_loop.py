@@ -122,7 +122,7 @@ if __name__ == "__main__":
                     admissible_commands = list(info['admissible_commands'][0])
                     with open(log_paths['admissible_commands_path'], "w") as f:
                         f.write(f"{admissible_commands}\n")
-                    initial_message_content += f"Admissible commands: {admissible_commands}\n"
+                    initial_message_content += f"Admissible actions: {admissible_commands}\n"
 
                     run_chat = True
 
