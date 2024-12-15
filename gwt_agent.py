@@ -51,7 +51,7 @@ class GWTAutogenAgent(AutogenAgent):
                 "Feedback: [on the desk 2, you see a bowl 1, and a cd 3]"
                 "Your Output: THOUGHT [Now I find a bowl (1). I need to use the desklamp to look at the bowl. "
                 "I'll go to the desklamp now.] ACTION [go to desk 1]"
-                "VERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
+                "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
                 "Never assume you have successfully completed the task. Once you complete the task, the chat will end "
                 "on its own. If you do not provide an action suggestion, you will fail the task."
             ),
@@ -68,7 +68,10 @@ class GWTAutogenAgent(AutogenAgent):
             system_message="You call the execute_action function with the proposed action as the argument. For "
                            "example, if the proposed action is ACTION[go to desk 1], you should output "
                            "execute_action(\"go to desk 1\"). You must include a call to the execute_action function "
-                           "in your output, or you will fail the task. If no proposed action is given, choose a random admissible action as the argument.",
+                           "in your output, or you will fail the task. If no proposed action is given, choose a random admissible action as the argument."
+                           "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
+                           "Never assume you have successfully completed the task. Once you complete the task, the chat will end "
+                           "on its own. If you do not provide an action suggestion, you will fail the task.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -76,12 +79,8 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.retrieve_long_term_memory_agent = ConversableAgent(
             name="Retrieve_Long_Term_Memory_Agent",
-            system_message="""You are the Retrieve Memory Agent. You task is ONLY to call the function `retrieve_long_term_memory` to retrieve the memory.
-                    DO NOT analyze any information such as task, history, admissible commands, guidance, etc.
-                    **RULES:**
-                    The TOOL you can only use is `retrieve_long_term_memory`.
-                    DO NOT call any other tools.
-                    You can only use `retrieve_long_term_memory` once per step.            
+            system_message="""You call the function `retrieve_long_term_memory' function when most useful. 
+                    You can only call `retrieve_long_term_memory` once per step. Your fixed output should always be: retrieve_long_term_memory().        
                     """,
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -95,7 +94,7 @@ class GWTAutogenAgent(AutogenAgent):
                 "providing new ideas, theories, explanations, and hypotheses whenever Planning_Agent is confused or is proposing repetitive actions."
                 "Example Output: (After taking spoon 1)"
                 "\nI noticed we were holding spoon 1 when we tried to open the drawer. Maybe the reason we couldn't open the drawer is because our hands are full. We need to place the spoon 1 somewhere before attempting to open the drawer again."
-                "VERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
+                "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
                 "Never assume you have successfully completed the task. Once you complete the task, the chat will end "
                 "on its own."
             ),
@@ -248,7 +247,7 @@ class GWTAutogenAgent(AutogenAgent):
         )
         self.echo_agent.description = "executes execute_action and reports the output as feedback."
         self.summarizer_agent.description = "executes the given function call and summarizes the crucial information in the output for solving the task"
-        self.summarizer_agent2.description = "executes the given function call and summarizes the crucial information in the output for solving the task"
+        self.summarizer_agent2.description = "executes retrieve_long_term_memory and summarizes the crucial information in the output for solving the task"
         self.echo_agent2.description = "executes record_long_term_memory and reports the output"
         self.conscious_agent.description = "integrates all available information from the ongoing conversation and maintains a continuously updated, first-person narrative model of the environment and actions within it"
         self.retrieve_working_memory_agent.description = "calls get_environment_model with the proposed model update as the argument"
