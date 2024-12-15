@@ -4,7 +4,6 @@ from autogen import ConversableAgent, register_function, GroupChat, GroupChatMan
 from helpers import get_best_candidate, register_function_lambda, is_termination_msg_generic, get_echo_agent
 from autogen_agent import AutogenAgent
 
-
 class GWTAutogenAgent(AutogenAgent):
     def __init__(self, env, obs, info, llm_config, log_path, game_no, max_actions=50, args=None):
         super().__init__(env, obs, info, llm_config, log_path, game_no, max_actions, args)
@@ -13,15 +12,15 @@ class GWTAutogenAgent(AutogenAgent):
         self.planning_agent = None
         self.executor_agent = None
         self.imagination_agent = None
-        self.echo_agent = None
-        self.echo_agent2 = None
+        self.external_perception_agent = None
+        self.internal_perception_agent = None
         self.conscious_agent = None
         self.retrieve_working_memory_agent = None
         self.retrieve_long_term_memory_agent = None
         self.learning_agent = None
         self.record_long_term_memory_agent = None
-        self.summarizer_agent = None
-        self.summarizer_agent2 = None
+        self.system_2_summarizer_agent = None
+        self.system_1_summarizer_agent = None
         self.game_no = game_no
 
         self.narrative_state = ""
@@ -199,24 +198,20 @@ class GWTAutogenAgent(AutogenAgent):
         )
 
         llm_config = copy.deepcopy(self.llm_config)
-        llm_config['max_tokens'] = 1000
-        self.echo_agent = get_echo_agent(llm_config,
-                                         additional_termination_criteria=[executor_agent_termination_msg])
-        self.echo_agent2 = get_echo_agent(llm_config)
-        self.summarizer_agent = ConversableAgent(
-            name="Summarizer_Agent",
-            system_message="You receive an order to execute a function. "
-                           "You must execute the correct given function with the given argument "
-                           "and summarize the crucial information in the resulting output for solving the task. ",
+        llm_config['max_tokens'] = 1500
+        self.external_perception_agent = get_echo_agent(llm_config,
+                                                        additional_termination_criteria=[executor_agent_termination_msg])
+        self.internal_perception_agent = get_echo_agent(llm_config)
+        self.system_2_summarizer_agent = ConversableAgent(
+            name="System_2_Summarizer_Agent",
+            system_message="You execute retrieve_working_memory and summarize the crucial information in the output for solving the task.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
         )
-        self.summarizer_agent2 = ConversableAgent(
-            name="Summarizer_Agent2",
-            system_message="You receive an order to execute a function. "
-                           "You must execute the correct given function with the given argument "
-                           "and summarize the crucial information in the resulting output for solving the task. ",
+        self.system_1_summarizer_agent = ConversableAgent(
+            name="System_1_Summarizer_Agent",
+            system_message="You execute retrieve_long_term_memory and summarize the crucial information in the output for solving the task.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -224,17 +219,17 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.allowed_transitions = {
             self.planning_agent: [self.executor_agent, self.imagination_agent],
-            self.executor_agent: [self.echo_agent],
-            self.echo_agent: [self.conscious_agent],
+            self.executor_agent: [self.external_perception_agent],
+            self.external_perception_agent: [self.conscious_agent],
             self.conscious_agent: [self.retrieve_working_memory_agent],
-            self.retrieve_working_memory_agent: [self.summarizer_agent],
-            self.summarizer_agent2: [self.planning_agent, self.imagination_agent, self.learning_agent],
-            self.summarizer_agent: [self.planning_agent, self.imagination_agent, self.learning_agent],
-            self.retrieve_long_term_memory_agent: [self.summarizer_agent2],
+            self.retrieve_working_memory_agent: [self.system_2_summarizer_agent],
+            self.system_1_summarizer_agent: [self.planning_agent, self.imagination_agent, self.learning_agent],
+            self.system_2_summarizer_agent: [self.planning_agent, self.imagination_agent, self.learning_agent],
+            self.retrieve_long_term_memory_agent: [self.system_1_summarizer_agent],
             self.imagination_agent: [self.planning_agent, self.learning_agent, self.retrieve_long_term_memory_agent],
             self.learning_agent: [self.record_long_term_memory_agent],
-            self.record_long_term_memory_agent: [self.echo_agent2],
-            self.echo_agent2: [self.imagination_agent]
+            self.record_long_term_memory_agent: [self.internal_perception_agent],
+            self.internal_perception_agent: [self.imagination_agent]
         }
 
         self.planning_agent.description = "generates plans and makes action decisions to solve the task"
@@ -245,17 +240,17 @@ class GWTAutogenAgent(AutogenAgent):
             "helps Planning_Agent solve the given task using the least amount of actions by "
             "providing new ideas whenever Planning_Agent is confused or is proposing repetitive and inefficient actions."
         )
-        self.echo_agent.description = "executes execute_action and reports the output as feedback."
-        self.summarizer_agent.description = "executes the given function call and summarizes the crucial information in the output for solving the task"
-        self.summarizer_agent2.description = "executes retrieve_long_term_memory and summarizes the crucial information in the output for solving the task"
-        self.echo_agent2.description = "executes record_long_term_memory and reports the output"
+        self.external_perception_agent.description = "executes execute_action and reports the output as feedback."
+        self.system_2_summarizer_agent.description = "executes retrieve_working_memory and summarizes the crucial information in the output for solving the task"
+        self.system_1_summarizer_agent.description = "executes retrieve_long_term_memory and summarizes the crucial information in the output for solving the task"
+        self.internal_perception_agent.description = "executes record_long_term_memory and reports the output"
         self.conscious_agent.description = "integrates all available information from the ongoing conversation and maintains a continuously updated, first-person narrative model of the environment and actions within it"
         self.retrieve_working_memory_agent.description = "calls get_environment_model with the proposed model update as the argument"
         self.learning_agent.description = "analyzes the history and proposes new general knowledge of capability, environment, and task"
         self.record_long_term_memory_agent.description = "records new long-term memories"
         self.retrieve_long_term_memory_agent.description = "calls retrieve long-term memory contents at most once per step"
 
-        self.start_agent = self.echo_agent
+        self.start_agent = self.external_perception_agent
 
     def register_functions(self):
         # Define execute_action as a nested function
@@ -344,22 +339,22 @@ class GWTAutogenAgent(AutogenAgent):
 
         register_function_lambda(
             {r"execute_action": execute_action},
-            [self.echo_agent]
+            [self.external_perception_agent]
         )
 
         register_function_lambda(
             {r"record_long_term_memory": record_long_term_memory},
-            [self.echo_agent2]
+            [self.internal_perception_agent]
         )
 
         register_function_lambda(
             {r"get_environment_model": get_environment_model},
-            [self.summarizer_agent]
+            [self.system_2_summarizer_agent]
         )
 
         register_function_lambda(
             {r"retrieve_long_term_memory": retrieve_long_term_memory},
-            [self.summarizer_agent2]
+            [self.system_1_summarizer_agent]
         )
 
     def initialize_groupchat(self, max_chat_round=2000):
@@ -369,15 +364,15 @@ class GWTAutogenAgent(AutogenAgent):
                 self.planning_agent,
                 self.executor_agent,
                 self.imagination_agent,
-                self.echo_agent,
-                self.echo_agent2,
+                self.external_perception_agent,
+                self.internal_perception_agent,
                 self.conscious_agent,
                 self.retrieve_working_memory_agent,
                 self.retrieve_long_term_memory_agent,
                 self.learning_agent,
                 self.record_long_term_memory_agent,
-                self.summarizer_agent,
-                self.summarizer_agent2
+                self.system_2_summarizer_agent,
+                self.system_1_summarizer_agent
             ],
             messages=[],
             allowed_or_disallowed_speaker_transitions=self.allowed_transitions,
