@@ -78,12 +78,7 @@ class MemoryAutogenAgent(AutogenAgent):
                 "You are the Lesson Recorder. Your role is to produce new, useful lessons based on recent observations and actions. "
                 "You have access to the most recent results, observations, and possibly previous memory summaries that detail "
                 "lessons learned in the past.\n\n"
-
-                "Your output should be one of the following:\n"
-                "- If no new meaningful lesson can be drawn from the latest feedback (i.e., it doesn't add substantial new insights "
-                "or correct previous lessons), simply say: 'No new memory'.\n"
-                "- Otherwise, output one new lesson in the format: NEW MEMORY: <lesson>\n\n"
-
+                ""
                 "Guidelines for producing a new lesson:\n"
                 "1. **Only produce a new lesson when it adds clear value.** Don't produce trivial or overly repetitive lessons. "
                 "If a similar lesson already exists, only generate a new one if it refines, contradicts, or meaningfully expands "
@@ -100,8 +95,14 @@ class MemoryAutogenAgent(AutogenAgent):
                 "5. **Only One Lesson at a Time:** If you have multiple insights, choose the one that is the most important or "
                 "widely applicable. If you need to store multiple insights, consider whether they can be combined into a single, "
                 "more general principle.\n\n"
-
-                "If no substantial new lesson emerges from the recent events or no corrections are needed, output 'No new memory'."),
+                ""
+                "Your output should be one of the following:\n"
+                "- If no new meaningful lesson can be drawn from the latest feedback (i.e., it doesn't add substantial new insights "
+                "or correct previous lessons), simply output: 'No new memory'.\n"
+                "- Otherwise, output one new lesson in the format: 'NEW MEMORY: <lesson>'\n\n"
+                ""
+                "Always follow output formatting exactly, ot your message will not be processed."
+            ),
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
