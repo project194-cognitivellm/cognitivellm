@@ -120,6 +120,8 @@ class GWTAutogenAgent(AutogenAgent):
                 "\nExample:"
                 "Model Update: I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and "
                 "attempted to put it into drawer 1, but I was unable to open that drawer. Then, I realized I couldn't open the drawer because my hands were full, apparently, I have hands. Then, I placed spoon 1 on countertop 1. Then, I opened drawer 1. I am now deciding what to do next."
+                "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
+                "Never assume you have successfully completed the task. Once you complete the task, the chat will end on its own."
             ),
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -131,7 +133,9 @@ class GWTAutogenAgent(AutogenAgent):
             system_message="You call the update_and_retrieve_working_memory function with the proposed model update as the argument. "
                            "For example, if the update is Model Update: [I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.]"
                            ", you should output update_and_retrieve_working_memory(\'I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.\'). "
-                           "You must include a call to the update_and_retrieve_working_memory function in your output, or you will fail the task. If no model update is given, call update_and_retrieve_working_memory with an empty string as the argument.",
+                           "You must include a call to the update_and_retrieve_working_memory function in your output, or you will fail the task. If no model update is given, call update_and_retrieve_working_memory with an empty string as the argument."
+                           "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
+                           "Never assume you have successfully completed the task. Once you complete the task, the chat will end on its own.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -196,6 +200,8 @@ class GWTAutogenAgent(AutogenAgent):
                                 Your output should be either:
                                 - A function call to `record_long_term_memory` with the new guidance (if new guidance was given), or
                                 - Nothing (if there is no new guidance).
+                                \nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. 
+                                Never assume you have successfully completed the task. Once you complete the task, the chat will end on its own.
                     """,
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -210,14 +216,18 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.system_2_summarizer_agent_STM = ConversableAgent(
             name="System_2_Summarizer_Agent",
-            system_message="You execute update_and_retrieve_working_memory and summarize the crucial information in the output for solving the task.",
+            system_message="You execute update_and_retrieve_working_memory and summarize the crucial information in the output for solving the task."
+                           "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
+                           "Never assume you have successfully completed the task. Once you complete the task, the chat will end on its own.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
         )
         self.system_2_summarizer_agent_LTM = ConversableAgent(
             name="System_2_Summarizer_Agent",
-            system_message="You execute retrieve_long_term_memory and summarize the crucial information in the output for solving the task.",
+            system_message="You execute retrieve_long_term_memory and summarize the crucial information in the output for solving the task."
+                           "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
+                           "Never assume you have successfully completed the task. Once you complete the task, the chat will end on its own.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
