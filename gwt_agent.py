@@ -219,7 +219,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.internal_perception_agent = get_echo_agent("Internal_Perception_Agent", llm_config)
 
         self.system_2_summarizer_agent_STM = ConversableAgent(
-            name="System_2_Summarizer_Agent",
+            name="System_2_Summarizer_Agent_STM",
             system_message="You execute update_and_retrieve_working_memory and summarize the crucial information in the output for solving the task."
                            "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
                            "Never assume you have successfully completed the task. Once you complete the task, the chat will end on its own.",
@@ -228,7 +228,7 @@ class GWTAutogenAgent(AutogenAgent):
             is_termination_msg=lambda msg: False,
         )
         self.system_2_summarizer_agent_LTM = ConversableAgent(
-            name="System_2_Summarizer_Agent",
+            name="System_2_Summarizer_Agent_LTM",
             system_message="You execute retrieve_long_term_memory and summarize the crucial information in the output for solving the task."
                            "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
                            "Never assume you have successfully completed the task. Once you complete the task, the chat will end on its own.",
@@ -252,12 +252,11 @@ class GWTAutogenAgent(AutogenAgent):
             self.external_perception_agent: [self.conscious_agent],
             self.conscious_agent: [self.update_and_retrieve_working_memory_agent],
             self.update_and_retrieve_working_memory_agent: [self.system_2_summarizer_agent_STM],
-            self.system_2_summarizer_agent_LTM: [self.planning_agent, self.imagination_agent, self.learning_agent],
+            self.system_2_summarizer_agent_LTM: [self.planning_agent, self.imagination_agent],
             self.system_2_summarizer_agent_STM: [self.planning_agent, self.imagination_agent, self.learning_agent],
             self.retrieve_long_term_memory_agent: [self.system_2_summarizer_agent_LTM],
-            self.imagination_agent: [self.planning_agent, self.learning_agent, self.retrieve_long_term_memory_agent,
-                                     self.conscious_agent],
-            self.learning_agent: [self.record_long_term_memory_agent, self.imagination_agent],
+            self.imagination_agent: [self.planning_agent, self.retrieve_long_term_memory_agent, self.conscious_agent],
+            self.learning_agent: [self.record_long_term_memory_agent],
             self.record_long_term_memory_agent: [self.internal_perception_agent],
             self.internal_perception_agent: [self.imagination_agent]
         }
@@ -277,7 +276,7 @@ class GWTAutogenAgent(AutogenAgent):
         )
         self.learning_agent.description = "analyzes the history and proposes new general knowledge of capability, the environment, and the task"
 
-        self.record_long_term_memory_agent.description = "calls the record_long_term_memory function with the correct arguments"
+        self.record_long_term_memory_agent.description = "calls the record_long_term_memory function with the given argument once per step"
         self.internal_perception_agent.description = "executes record_long_term_memory and reports the output"
 
         self.retrieve_long_term_memory_agent.description = "calls retrieve_long_term_memory with no arguments"
