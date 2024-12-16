@@ -1,5 +1,7 @@
 import copy
 import os
+from platform import system
+
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 from helpers import get_best_candidate, register_function_lambda, is_termination_msg_generic, get_echo_agent
 from autogen_agent import AutogenAgent
@@ -28,7 +30,6 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.narrative_state = ""
         self.initialize_autogen()
-        # self.merge_pipeline = pipeline("text2text-generation", model="t5-small")
 
     def initialize_agents(self):
 
@@ -188,18 +189,20 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.record_long_term_memory_agent = ConversableAgent(
             name="Record_Long_Term_Memory_Agent",
-            system_message="""You are the Record Long-Term Memory Agent. Your sole task is to record new guidance rules provided by the Learning_Agent into a persistent storage by calling the `record_long_term_memory` function.
+            system_message="""You call the record_long_term_memory function with the appropriate arguments.
                                 **Rules:**
-                                - If the Guidance Agent outputs new guidance, call `record_long_term_memory` with the new rules.
-                                - If the Guidance Agent states "NO NEW GUIDANCE at this time.", do not call `record_long_term_memory` and do nothing else.
-                                - You have no other tasks. Do not analyze history or provide commentary.
-                                - Do not repeat previously recorded guidance. Only record newly provided guidance.
-                                - You can only call `record_long_term_memory` once per step.
-                                - Do not use or call any tools other than `record_long_term_memory`.
+                                - If Learning_Agent outputs new unseen guidance, call record_long_term_memory with the new rules.
+                                - If Learning_Agent states "NO NEW GUIDANCE at this time.", do not call record_long_term_memory.
+                                - Do not record previously recorded guidance. Only record newly provided guidance.
+                                - You can only call record_long_term_memory once per step.
+                                - Do not use or call any tools other than record_long_term_memory.
 
                                 Your output should be either:
-                                - A function call to `record_long_term_memory` with the new guidance (if new guidance was given), or
+                                - A function call to record_long_term_memory with the new guidance (if new guidance was given), or
                                 - Nothing (if there is no new guidance).
+
+                                \nFor example, if novel guidance is given: record_long_term_memory([novel guidance received])
+
                                 \nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. 
                                 Never assume you have successfully completed the task. Once you complete the task, the chat will end on its own.
                     """,
@@ -211,7 +214,8 @@ class GWTAutogenAgent(AutogenAgent):
         llm_config = copy.deepcopy(self.llm_config)
         llm_config['max_tokens'] = 1500
 
-        self.external_perception_agent = get_echo_agent("External_Perception_Agent", llm_config, additional_termination_criteria=[motor_agent_termination_msg])
+        self.external_perception_agent = get_echo_agent("External_Perception_Agent", llm_config,
+                                                        additional_termination_criteria=[motor_agent_termination_msg])
         self.internal_perception_agent = get_echo_agent("Internal_Perception_Agent", llm_config)
 
         self.system_2_summarizer_agent_STM = ConversableAgent(
@@ -233,6 +237,15 @@ class GWTAutogenAgent(AutogenAgent):
             is_termination_msg=lambda msg: False,
         )
 
+        self.focus_agent = ConversableAgent(
+            name="Focus_Agent",
+            system_message="You continuously check if the task has been completed. "
+                           "If the task has been completed, execute the function retrieve_working_memory with '' as the argument "
+                           "and then summarize the output.",
+            llm_config=self.llm_config,
+            is_termination_msg=lambda msg: False,
+        )
+
         self.allowed_transitions = {
             self.planning_agent: [self.motor_agent, self.imagination_agent, self.retrieve_long_term_memory_agent],
             self.motor_agent: [self.external_perception_agent],
@@ -242,8 +255,9 @@ class GWTAutogenAgent(AutogenAgent):
             self.system_2_summarizer_agent_LTM: [self.planning_agent, self.imagination_agent, self.learning_agent],
             self.system_2_summarizer_agent_STM: [self.planning_agent, self.imagination_agent, self.learning_agent],
             self.retrieve_long_term_memory_agent: [self.system_2_summarizer_agent_LTM],
-            self.imagination_agent: [self.planning_agent, self.learning_agent, self.retrieve_long_term_memory_agent],
-            self.learning_agent: [self.record_long_term_memory_agent],
+            self.imagination_agent: [self.planning_agent, self.learning_agent, self.retrieve_long_term_memory_agent,
+                                     self.conscious_agent],
+            self.learning_agent: [self.record_long_term_memory_agent, self.imagination_agent],
             self.record_long_term_memory_agent: [self.internal_perception_agent],
             self.internal_perception_agent: [self.imagination_agent]
         }
@@ -294,9 +308,9 @@ class GWTAutogenAgent(AutogenAgent):
 
             # time.sleep(1)
             if self.success:
-                return f"Observation: {self.obs[0]}\nTask Status: SUCCESS\nActions Left: {self.max_actions - self.num_actions}"
+                return f"SUCCESS"
             elif self.num_actions >= self.max_actions:
-                return f"Observation: {self.obs[0]}\nTask Status: FAILURE\nActions Left: {self.max_actions - self.num_actions}"
+                return f"FAILURE"
             else:
                 return f"Observation: {self.obs[0]}\nTask Status: INCOMPLETE\nActions Left: {self.max_actions - self.num_actions}\nCurrent Admissible Actions: {list(self.info['admissible_commands'][0])}"
 
@@ -306,7 +320,7 @@ class GWTAutogenAgent(AutogenAgent):
             with open(self.log_paths['guidance_path'], "a+") as f:
                 f.write(f"{guidance}\n")
                 lines = f.readlines()
-                if len(lines) > 5:
+                if len(lines) > 10:
                     f.seek(0)
                     f.truncate()
                     for line in lines[:-1]:
