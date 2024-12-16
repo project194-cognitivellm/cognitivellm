@@ -15,7 +15,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.planning_agent = None
         self.motor_agent = None
-        self.imagination_agent = None
+        self.global_workspace_agent = None
         self.external_perception_agent = None
         self.internal_perception_agent = None
         self.conscious_agent = None
@@ -92,12 +92,12 @@ class GWTAutogenAgent(AutogenAgent):
             is_termination_msg=lambda msg: False,
         )
 
-        self.imagination_agent = ConversableAgent(
-            name="Imagination_Agent",
+        self.global_workspace_agent = ConversableAgent(
+            name="Global_Workspace_Agent",
             system_message=(
                 "Your goal is to help Planning_Agent solve the given task by "
-                "providing new ideas, theories, explanations, and hypotheses whenever Planning_Agent is confused or is proposing repetitive actions."
-                "Example Output: (After taking spoon 1)"
+                "constructing new ideas, theories, explanations, and hypotheses to help whenever Planning_Agent is confused or is proposing repetitive actions."
+                "Example Output: (After taking spoon 1 multiple times)"
                 "\nI noticed we were holding spoon 1 when we tried to open the drawer. Maybe the reason we couldn't open the drawer is because our hands are full. We need to place the spoon 1 somewhere before attempting to open the drawer again."
                 "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
                 "Never assume you have successfully completed the task. Once you complete the task, the chat will end "
@@ -247,18 +247,19 @@ class GWTAutogenAgent(AutogenAgent):
         )
 
         self.allowed_transitions = {
-            self.planning_agent: [self.motor_agent, self.imagination_agent],
+            self.planning_agent: [self.motor_agent, self.global_workspace_agent],
             self.motor_agent: [self.external_perception_agent],
             self.external_perception_agent: [self.conscious_agent],
             self.conscious_agent: [self.update_and_retrieve_working_memory_agent],
             self.update_and_retrieve_working_memory_agent: [self.system_2_summarizer_agent_STM],
             self.system_2_summarizer_agent_LTM: [self.conscious_agent],
-            self.system_2_summarizer_agent_STM: [self.planning_agent, self.imagination_agent, self.learning_agent],
+            self.system_2_summarizer_agent_STM: [self.planning_agent, self.global_workspace_agent, self.learning_agent],
             self.retrieve_long_term_memory_agent: [self.system_2_summarizer_agent_LTM],
-            self.imagination_agent: [self.planning_agent, self.retrieve_long_term_memory_agent, self.conscious_agent],
+            self.global_workspace_agent: [self.planning_agent, self.retrieve_long_term_memory_agent,
+                                          self.conscious_agent],
             self.learning_agent: [self.record_long_term_memory_agent],
             self.record_long_term_memory_agent: [self.internal_perception_agent],
-            self.internal_perception_agent: [self.imagination_agent]
+            self.internal_perception_agent: [self.global_workspace_agent]
         }
 
         self.motor_agent.description = (
@@ -270,7 +271,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.system_2_summarizer_agent_STM.description = "executes update_and_retrieve_working_memory and summarizes the crucial information in the output for solving the task"
 
         self.planning_agent.description = "generates plans and makes action decisions to solve the task"
-        self.imagination_agent.description = (
+        self.global_workspace_agent.description = (
             "helps Planning_Agent solve the given task using the least amount of actions by "
             "providing new ideas whenever Planning_Agent is confused or is proposing repetitive and inefficient actions."
         )
@@ -395,7 +396,7 @@ class GWTAutogenAgent(AutogenAgent):
             agents=[
                 self.planning_agent,
                 self.motor_agent,
-                self.imagination_agent,
+                self.global_workspace_agent,
                 self.external_perception_agent,
                 self.internal_perception_agent,
                 self.conscious_agent,
