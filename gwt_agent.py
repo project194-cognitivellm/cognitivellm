@@ -252,7 +252,7 @@ class GWTAutogenAgent(AutogenAgent):
             self.external_perception_agent: [self.conscious_agent],
             self.conscious_agent: [self.update_and_retrieve_working_memory_agent],
             self.update_and_retrieve_working_memory_agent: [self.system_2_summarizer_agent_STM],
-            self.system_2_summarizer_agent_LTM: [self.planning_agent, self.imagination_agent],
+            self.system_2_summarizer_agent_LTM: [self.conscious_agent],
             self.system_2_summarizer_agent_STM: [self.planning_agent, self.imagination_agent, self.learning_agent],
             self.retrieve_long_term_memory_agent: [self.system_2_summarizer_agent_LTM],
             self.imagination_agent: [self.planning_agent, self.retrieve_long_term_memory_agent, self.conscious_agent],
@@ -326,7 +326,7 @@ class GWTAutogenAgent(AutogenAgent):
                         f.write(line)
 
             # time.sleep(1)
-            return "Guidance recorded."
+            return "knowledge recorded."
 
         # Define retrieve_memory function, return all the content in the memory.txt file
         def retrieve_long_term_memory() -> str:
