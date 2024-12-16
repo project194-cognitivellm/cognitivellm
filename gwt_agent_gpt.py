@@ -5,12 +5,12 @@ from helpers import register_function_lambda, get_best_candidate, is_termination
 from autogen_agent import AutogenAgent
 import copy
 
-class GWTRuleAutogenAgent(AutogenAgent):
+class GWTAutogenAgent(AutogenAgent):
     def __init__(self, env, obs, info, llm_config, log_path, game_no, max_actions=50, args=None):
         super().__init__(env, obs, info, llm_config, log_path, game_no, max_actions, args)
         self.retrieve_memory_agent = None
-        self.rule_agent = None
-        self.record_rule_agent = None
+        self.guidance_agent = None
+        self.record_guidance_agent = None
         self.task_agent = None
         self.command_evaluation_agent = None
         self.executor_agent = None
@@ -45,62 +45,48 @@ class GWTRuleAutogenAgent(AutogenAgent):
         )
 
         # Guidance Agent
-        self.rule_agent = ConversableAgent(
-            name="Rule_Agent",
-            system_message="""You are the Rule Agent. Your sole responsibility is to discover and extract general rules about the environment and agent capabilities based on exploration and history. You must focus exclusively on patterns related to **what actions are admissible**, **how actions interact with the environment**, and **the conditions required for success.**
-
-            **Key Constraints:**
-            1. **No Task Analysis:** Do NOT analyze or consider any information related to specific tasks, goals, or objectives. Your role is entirely independent of tasks.
-            2. **Focus on Capabilities and Environment:**
-            - Identify rules that describe the limitations, requirements, or interactions between the agent and the environment.
-            - Rules should be based on how the environment responds to actions or what preconditions are necessary for certain actions to succeed.
-            3. **Generalized Rules:**
-            - Avoid referencing specific items, locations, or overly concrete steps.
-            - Rules must be broadly applicable and reusable in different contexts.
-            4. **Validated Rules Only:**
-            - The history provided may not always be accurate. Extract rules only when confirmed as successful and beneficial for understanding the environment or agent capabilities.
-
+        self.guidance_agent = ConversableAgent(
+            name="Guidance_Agent",
+            system_message="""You are the Guidance Agent. Your task is to extract beneficial guidance from history.
+            If you tried to do something but failed (e.g., commands is not admissible), but after trying different plans or commands you succeeded, you should learn from the failures and successes, and the successful methods is a good guidance.
+            Avoid including specific items, locations, or overly concrete steps in the rules. 
+            Focus on broadly applicable principles that summarize patterns of success or failure.
+            NOTE: the history is not always correct, the rules you learned must be successful and beneficial.
             **Analysis Process:**
-            - **Understand Limitations:** Identify what actions fail and why (e.g., non-admissible actions, insufficient preconditions).
-            - **Extract Successful Patterns:** Focus on the environmental conditions or agent capabilities that enable success.
-            - **Formulate Rules:** Summarize findings into one concise, broadly applicable rule that describes how the environment or capabilities operate.
-
+            - Understand Your Capabilities: Note limitations based on observed failures or non-admissible actions. Record rules that prevent you from repeating errors.
+            - Extract Successful Strategies: Identify and save successful subplans or tactics that can be reused in similar situations to enhance efficiency.
+            - Avoid Redundant Guidance: Always summarize findings into one rule. If the guidance is already covered by previous guidance, do not record it.
             **Output Guidelines:**
-            1. If no new rule is identified, explicitly state: "NO NEW RULES at this time."
-            2. Do NOT summarize or reference history directly; focus solely on actionable principles.
-
+            - If no new guidance are found, explicitly state: "NO NEW GUIDANCE at this time."
+            - Avoid summarizing or repeating history directly; focus on actionable principles.
             **Examples:**
-            History:
-            1. You tried to open a cabinet but failed. After examining it, you succeeded.
-            2. You attempted to carry three objects simultaneously but failed. After reducing the load to one object, you succeeded.
-
-            Rule Discovered:
-            1. Objects often require examination before interaction to determine admissibility of actions.
-            2. The agent cannot carry more than one object at a time.
-
-            **Output Format:**
-            Rule Discovered:
-            1. ...
-
+            History you get: 
+            1. You tried to open a drawer but failed. After examining it, you succeeded. 
+            2. You tried carrying two objects simultaneously but failed. You succeeded after dividing the tasks, carry one object at a time.
+            Guidance you learned from these history:
+            1. Always examine an object before attempting to interact with it.
+            2. Cannot carry more than one object at a time. Divide tasks accordingly.
+            **Output format:**
+            Guidance:....
             """,
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=is_termination_msg_generic
         )
 
-        self.record_rule_agent = ConversableAgent(
-            name="Record_Rule_Agent",
-            system_message="""You are the Record Rule Agent. Your sole task is to call the `record_rule` function to log new rule.
+        self.record_guidance_agent = ConversableAgent(
+            name="Record_Guidance_Agent",
+            system_message="""You are the Record Guidance Agent. Your sole task is to call the `record_guidance` function to log new guidance.
 
             **Rules:**
-            1. ONLY use the `record_rule` function to log new rule.
+            1. ONLY use the `record_guidance` function to log new guidance.
             2. Do NOT analyze tasks, history, or commands.
-            3. If the output is "No new rule at this time," do NOT call the `record_rule` function.
-            4. Call `record_rule` only ONCE per step.  
+            3. If the output is "No new guidance at this time," do NOT call the `record_guidance` function.
+            4. Call `record_guidance` only ONCE per step.   
             5. Do not include quotation mark or double quotation mark.
             
             **Example:**
-            record_rule("You must examine an object before attempting to interact with it.")        
+            record_guidance("You must examine an object before attempting to interact with it.")
             """,
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -118,11 +104,15 @@ class GWTRuleAutogenAgent(AutogenAgent):
             4. Propose up to 3 compact, admissible candidate actions for the next step.
 
             **Guidelines:**
-            1. Base your goals and actions on the current feedback including the history, rules, etc.
+            1. Base your goals and actions on the current feedback including the history, guidance, etc.
             2. Understand your capabilities and the environment.
             3. Modify goals as you explore and learn more about the environment.
             4. Include exploratory actions if necessary to improve task performance.
             
+            **Rule:**
+            1. DO NOT manipulate similar objects. Task already specifies the exact object you need. For example, if you need a spray bottle, do not choose a soap bottle.
+
+
             **Examples of Candidate Actions:**
             1. go to drawer 1
             2. examine drawer 1
@@ -152,7 +142,7 @@ class GWTRuleAutogenAgent(AutogenAgent):
 
             **Evaluation Guidelines:**
             1. Prioritize actions that align with the current goal.
-            2. Use rules to assess the effectiveness of each action.
+            2. Use guidance to assess the effectiveness of each action.
             3. Ensure the chosen action is admissible.
             
 
@@ -189,8 +179,8 @@ class GWTRuleAutogenAgent(AutogenAgent):
         # Agent descriptions
         self.task_agent.description = "analyzes the task and proposes a plan to accomplish the task"
         self.retrieve_memory_agent.description = "retrieves the memory"
-        self.rule_agent.description = "analyzes the history and proposes rules for your capability, envrionment."
-        self.record_rule_agent.description = "records the new rule"
+        self.guidance_agent.description = "analyzes the history and proposes guidance for your capability, envrionment, and task"
+        self.record_guidance_agent.description = "records the new guidance"
         self.command_evaluation_agent.description = "evaluates the outcome of the command"
         self.executor_agent.description = "executes actions and returns observations"
         
@@ -232,11 +222,11 @@ class GWTRuleAutogenAgent(AutogenAgent):
                 return f"Observation: {self.obs[0]}\nTask Status: INCOMPLETE\nActions Left: {self.max_actions - self.num_actions}"
 
         # Define record_memory function
-        def record_rule(rule: str) -> str:
+        def record_guidance(guidance: str) -> str:
 
             # the maximum number of lines are 5; if more than 5, delete the oldest one.
-            with open(self.log_paths['rule_path'], "a+") as f:
-                f.write(f"{rule}\n")
+            with open(self.log_paths['guidance_path'], "a+") as f:
+                f.write(f"{guidance}\n")
                 lines = f.readlines()
                 if len(lines) > 5:
                     f.seek(0)
@@ -245,7 +235,7 @@ class GWTRuleAutogenAgent(AutogenAgent):
                         f.write(line)
 
             # time.sleep(1)
-            return "Rule recorded."
+            return "Guidance recorded."
 
         # Define retrieve_memory function, return all the content in the memory.txt file
         def retrieve_memory() -> str:
@@ -268,26 +258,26 @@ class GWTRuleAutogenAgent(AutogenAgent):
                     memory_information += f.read()
 
             
-            if os.path.exists(self.log_paths['rule_path']):
-                memory_information += "\nRules: "
-                with open(self.log_paths['rule_path'], "r") as f:
+            if os.path.exists(self.log_paths['guidance_path']):
+                memory_information += "\nGuidance: "
+                with open(self.log_paths['guidance_path'], "r") as f:
                     memory_information += f.read()
 
                 
                 
             if self.args.long_term_guidance:
-                if len(self.log_paths['previous_rule_path']) > 0:
-                    memory_information += "\nPrevious Rules: \n"
-                    for previous_rule_path in self.log_paths['previous_rule_path']:
-                        if os.path.exists(previous_rule_path):
-                            with open(previous_rule_path, "r") as f:
+                if len(self.log_paths['previous_guidance_path']) > 0:
+                    memory_information += "\nPrevious Guidance: \n"
+                    for previous_guidance_path in self.log_paths['previous_guidance_path']:
+                        if os.path.exists(previous_guidance_path):
+                            with open(previous_guidance_path, "r") as f:
                                 memory_information += f.read()
 
             return memory_information
 
         register_function_lambda(
             {r"execute_action": execute_action,
-             r"record_rule": record_rule,
+             r"record_guidance": record_guidance,
              r"retrieve_memory": retrieve_memory},
             [self.echo_agent]
         )
@@ -304,12 +294,12 @@ class GWTRuleAutogenAgent(AutogenAgent):
                 next_speaker = self.task_agent
             elif last_speaker is self.retrieve_memory_agent:
                 next_speaker = self.echo_agent
-            elif last_speaker is self.rule_agent:
-                if "NO NEW RULES" in messages[-1]["content"]:
+            elif last_speaker is self.guidance_agent:
+                if "NO NEW GUIDANCE" in messages[-1]["content"]:
                     next_speaker = self.task_agent
                 else:
-                    next_speaker = self.record_rule_agent
-            elif last_speaker is self.record_rule_agent:
+                    next_speaker = self.record_guidance_agent
+            elif last_speaker is self.record_guidance_agent:
                 next_speaker = self.echo_agent
             elif last_speaker is self.task_agent:
                 next_speaker = self.command_evaluation_agent
@@ -322,8 +312,8 @@ class GWTRuleAutogenAgent(AutogenAgent):
                 next_speaker = self.echo_agent
             elif last_speaker is self.echo_agent:
                 if messages[-2]["name"] == "Retrieve_Memory_Agent":
-                    next_speaker = self.rule_agent
-                if messages[-2]["name"] == "Record_Rule_Agent":
+                    next_speaker = self.guidance_agent
+                if messages[-2]["name"] == "Record_Guidance_Agent":
                     next_speaker = self.task_agent
                 if messages[-2]["name"] == "Executor_Agent":
                     next_speaker = self.retrieve_memory_agent
@@ -340,8 +330,8 @@ class GWTRuleAutogenAgent(AutogenAgent):
         self.group_chat = GroupChat(
             agents=[
                 self.start_agent,
-                self.record_rule_agent,
-                self.rule_agent,
+                self.record_guidance_agent,
+                self.guidance_agent,
                 self.retrieve_memory_agent,
                 self.task_agent,
                 self.command_evaluation_agent,
@@ -358,34 +348,3 @@ class GWTRuleAutogenAgent(AutogenAgent):
             groupchat=self.group_chat,
             llm_config=self.llm_config,
         )
-        
-        
-    def register_log_paths(self):
-        
-        game_path = os.path.join(self.log_path, f"game_{self.game_no}")
-        os.makedirs(game_path, exist_ok=True)
-
-        task_path = os.path.join(game_path, "task.txt")
-        history_path = os.path.join(game_path, "history.txt")
-        rule_path = os.path.join(game_path, "rule.txt")
-        admissible_commands_path = os.path.join(game_path, "admissible_commands.txt")
-        chat_history_path = os.path.join(game_path, "chat_history.txt")
-        message_path = os.path.join(game_path, "last_message.pkl")
-        result_path = os.path.join(game_path, "result.txt")
-        error_message_path = os.path.join(game_path, "error_message.txt")
-        
-        # get all the previous game path
-        previous_game_path = [os.path.join(self.log_path, f"game_{i}") for i in range(self.game_no)]
-        previous_rule_path = [os.path.join(game_path, "rule.txt") for game_path in previous_game_path]
-
-        self.log_paths = {
-            "task_path": task_path,
-            "history_path": history_path,
-            "rule_path": rule_path,
-            "admissible_commands_path": admissible_commands_path,
-            "chat_history_path": chat_history_path,
-            "message_path": message_path,
-            "result_path": result_path,
-            "error_message_path": error_message_path,
-            "previous_rule_path": previous_rule_path
-        }

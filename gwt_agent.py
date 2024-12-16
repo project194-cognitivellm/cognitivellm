@@ -109,9 +109,6 @@ class GWTAutogenAgent(AutogenAgent):
             3. Modify goals as you explore and learn more about the environment.
             4. Include exploratory actions if necessary to improve task performance.
             
-            **Rule:**
-            1. DO NOT manipulate similar objects. Task already specifies the exact object you need. For example, if you need a spray bottle, do not choose a soap bottle.
-
 
             **Examples of Candidate Actions:**
             1. go to drawer 1
@@ -170,21 +167,6 @@ class GWTAutogenAgent(AutogenAgent):
             human_input_mode="NEVER",
             is_termination_msg=is_termination_msg_generic
         )
-        
-        self.judgement_agent = ConversableAgent(
-            name="Judgement_Agent",
-            system_message="""You are the Judgment Agent. Your task is to evaluate the conversation and determine its status based on the following criteria:
-            1. If the task is completed, the chat will automatically end. If the chat continues but other agents consider the task complete, it is a 'FAILURE'.
-            2. If the conversation does not make sense, repeats itself, label it as 'FAILURE'.
-            3. In all other cases, label the conversation as 'CONTINUE'.
-            
-            **Output Format:**
-            CHAT STATUS: FAILURE or CONTINUE
-            """,
-            llm_config=self.llm_config,
-            human_input_mode="NEVER",
-            is_termination_msg=is_termination_msg_generic
-        )
 
 
         llm_config = copy.deepcopy(self.llm_config)
@@ -198,7 +180,6 @@ class GWTAutogenAgent(AutogenAgent):
         self.record_guidance_agent.description = "records the new guidance"
         self.command_evaluation_agent.description = "evaluates the outcome of the command"
         self.executor_agent.description = "executes actions and returns observations"
-        self.judgement_agent.description = "judges the conversation and determines its status"
         
     def register_functions(self):
         # Define execute_action as a nested function
@@ -332,9 +313,7 @@ class GWTAutogenAgent(AutogenAgent):
                 if messages[-2]["name"] == "Record_Guidance_Agent":
                     next_speaker = self.task_agent
                 if messages[-2]["name"] == "Executor_Agent":
-                    next_speaker = self.judgement_agent
-            elif last_speaker is self.judgement_agent:
-                next_speaker = self.retrieve_memory_agent
+                    next_speaker = self.retrieve_memory_agent
             else:
                 raise ValueError(f"Unknown speaker: {last_speaker}")
 
@@ -355,7 +334,6 @@ class GWTAutogenAgent(AutogenAgent):
                 self.command_evaluation_agent,
                 self.executor_agent,
                 self.echo_agent,
-                self.judgement_agent
             ],
             messages=[],
             speaker_selection_method=state_transition,

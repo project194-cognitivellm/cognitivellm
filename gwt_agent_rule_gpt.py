@@ -123,6 +123,9 @@ class GWTRuleAutogenAgent(AutogenAgent):
             3. Modify goals as you explore and learn more about the environment.
             4. Include exploratory actions if necessary to improve task performance.
             
+            **Rule:**
+            1. DO NOT manipulate similar objects. Task already specifies the exact object you need. For example, if you need a spray bottle, do not choose a soap bottle.
+
             **Examples of Candidate Actions:**
             1. go to drawer 1
             2. examine drawer 1
