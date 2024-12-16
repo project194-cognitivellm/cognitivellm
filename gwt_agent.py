@@ -247,7 +247,7 @@ class GWTAutogenAgent(AutogenAgent):
         )
 
         self.allowed_transitions = {
-            self.planning_agent: [self.motor_agent, self.imagination_agent, self.retrieve_long_term_memory_agent],
+            self.planning_agent: [self.motor_agent, self.imagination_agent],
             self.motor_agent: [self.external_perception_agent],
             self.external_perception_agent: [self.conscious_agent],
             self.conscious_agent: [self.update_and_retrieve_working_memory_agent],
