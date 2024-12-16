@@ -44,6 +44,21 @@ def parse_arguments():
         action="store_true",
         help="Use long term guidance."
     )
+    
+    parser.add_argument(
+        "--start_game_no",
+        type=int,
+        default=0,
+        help="Start game number."
+    )
+    
+    parser.add_argument(
+        "--log_path",
+        type=str,
+        default="",
+        help="log path."
+    )
+    
     return parser.parse_args()
 
 
@@ -83,14 +98,30 @@ if __name__ == "__main__":
     repeats = config["general"]["evaluate"]["repeats"]
 
     # run logs
-    base_path = "runs"
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_path = os.path.join(base_path, timestamp)
+    if args.log_path != "":
+        base_path = args.log_path
+    else:
+        base_path = "runs"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_path = os.path.join(base_path, timestamp)
+    
     os.makedirs(base_path, exist_ok=True)
 
     result_list_path = os.path.join(base_path, "result_list.txt")
-    chat_round_list = []
-    num_actions_list = []
+    if args.start_game_no == 0:
+        chat_round_list = []
+        num_actions_list = []
+        success_list = []
+    else:
+        with open(result_list_path, "r") as f:
+            success_list = eval(f.readline().split(": ")[1])
+            chat_round_list = eval(f.readline().split(": ")[1])
+            num_actions_list = eval(f.readline().split(": ")[1])
+        
+        # only use the first start_game_no games
+        success_list = success_list[:args.start_game_no]
+        chat_round_list = chat_round_list[:args.start_game_no]
+        num_actions_list = num_actions_list[:args.start_game_no]
 
     for eval_env_type in eval_envs:
         for controller_type in (controllers if eval_env_type == "AlfredThorEnv" else ["tw"]):
@@ -106,13 +137,13 @@ if __name__ == "__main__":
 
                 ## For each set, there are `num_games` games we need to evaluate
                 num_games = alfred_env.num_games
-                success_list = []
+                
 
-                for i in range(num_games):
+                for i in range(args.start_game_no, num_games):
                     print("Initialized Environment")
 
                     obs, info = env.reset()
-                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, game_no = i, max_actions=25, args=args)
+                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, game_no = i, max_actions=35, args=args)
 
                     log_paths = agent.get_log_paths()
                     
@@ -130,12 +161,6 @@ if __name__ == "__main__":
 
                     initial_message_content += f"Observation: {initial_observation}\n"
 
-
-                    # save the admissible commands into a txt file
-                    admissible_commands = list(info['admissible_commands'][0])
-                    with open(log_paths['admissible_commands_path'], "w") as f:
-                        f.write(f"{admissible_commands}\n")
-                    initial_message_content += f"Admissible actions: {admissible_commands}\n"
 
                     run_chat = True
 

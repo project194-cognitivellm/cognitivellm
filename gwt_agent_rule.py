@@ -28,7 +28,8 @@ class GWTRuleAutogenAgent(AutogenAgent):
             **Rules:**
             1. Use ONLY the `retrieve_memory` function.
             2. Do NOT analyze tasks, history, commands, or any other information.
-            3. Call `retrieve_memory` only ONCE per step.   
+            3. Call `retrieve_memory` only ONCE per step.  
+            4. DO NOT do anything else.
             
             **Example:**
             retrieve_memory()      
@@ -78,6 +79,9 @@ class GWTRuleAutogenAgent(AutogenAgent):
             1. Objects often require examination before interaction to determine admissibility of actions.
             2. The agent cannot carry more than one object at a time.
 
+            **Important:**
+            DO NOT do anything else.
+            
             **Output Format:**
             Rule Discovered:
             1. ...
@@ -98,6 +102,9 @@ class GWTRuleAutogenAgent(AutogenAgent):
             3. If the output is "No new rule at this time," do NOT call the `record_rule` function.
             4. Call `record_rule` only ONCE per step.  
             5. Do not include quotation mark or double quotation mark.
+            
+            **Important:**
+            DO NOT do anything else.
             
             **Example:**
             record_rule("You must examine an object before attempting to interact with it.")        
@@ -124,12 +131,17 @@ class GWTRuleAutogenAgent(AutogenAgent):
             4. Include exploratory actions if necessary to improve task performance.
             
             **Examples of Candidate Actions:**
-            1. go to drawer 1
-            2. examine drawer 1
-            3. look at shelf 2
-
-            **Examples of Invalid Actions:**
-            1. go to drawer 1 to check for a spray bottle.
+            1. go to drawer 1/ cabinet 1
+            2. examine shelf 1 / spraybottle 2
+            3. put spraybottle 2 in/on toilet 1
+            4. take cloth 3 from toilet 1
+            
+            
+            
+            **Important:**
+            1. DO NOT do anything else. 
+            2. Do not assume similar objects are interchangeable. If the task specifies placing a spray bottle in or on toilet 1, do not propose goals like "place a soap bottle in or on toilet 1." Spray bottles and soap bottles are distinct and must not be confused.
+            
 
             **Output Format:**
             TASK ANALYSIS: ...
@@ -155,9 +167,11 @@ class GWTRuleAutogenAgent(AutogenAgent):
             2. Use rules to assess the effectiveness of each action.
             3. Ensure the chosen action is admissible.
             
+            **Important:**
+            DO NOT do anything else.
 
             **Output Format:**
-            Best Action You Choose for Execution: ...
+            Best Action for Execution: ...
             """,
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -172,6 +186,9 @@ class GWTRuleAutogenAgent(AutogenAgent):
             **Rules:**
             1. ONLY use the `execute_action` function to execute commands.
             2. Call `execute_action` only ONCE per step.
+            
+            **Important:**
+            DO NOT do anything else.
 
             **Example:**
             execute_action("go to drawer 1")
@@ -225,11 +242,11 @@ class GWTRuleAutogenAgent(AutogenAgent):
 
             # time.sleep(1)
             if self.success:
-                return f"Observation: {self.obs[0]}\nTask Status: SUCCESS\nActions Left: {self.max_actions - self.num_actions}"
+                return f"Action: {action}\nObservation: {self.obs[0]}\nTask Status: SUCCESS\nActions Left: {self.max_actions - self.num_actions}"
             elif self.num_actions >= self.max_actions:
-                return f"Observation: {self.obs[0]}\nTask Status: FAILURE\nActions Left: {self.max_actions - self.num_actions}"
+                return f"Action: {action}\nObservation: {self.obs[0]}\nTask Status: FAILURE\nActions Left: {self.max_actions - self.num_actions}"
             else:
-                return f"Observation: {self.obs[0]}\nTask Status: INCOMPLETE\nActions Left: {self.max_actions - self.num_actions}"
+                return f"Action: {action}\nObservation: {self.obs[0]}\nTask Status: INCOMPLETE\nActions Left: {self.max_actions - self.num_actions}"
 
         # Define record_memory function
         def record_rule(rule: str) -> str:
@@ -251,21 +268,21 @@ class GWTRuleAutogenAgent(AutogenAgent):
         def retrieve_memory() -> str:
             memory_information = ""
 
-            if os.path.exists(self.log_paths['task_path']):
-                with open(self.log_paths['task_path'], "r") as f:
-                    memory_information += f.read()
+            # if os.path.exists(self.log_paths['task_path']):
+            #     with open(self.log_paths['task_path'], "r") as f:
+            #         memory_information += f.read()
 
-            # latest 10 steps. last 10 lines
-            memory_information += "\nRecent 5 steps History: \n"
-            if os.path.exists(self.log_paths['history_path']):
-                with open(self.log_paths['history_path'], "r") as f:
-                    for line in f.readlines()[-5:]:
-                        memory_information += line
+            # # latest 5 steps. last 5 lines
+            # memory_information += "\nRecent 5 steps History: \n"
+            # if os.path.exists(self.log_paths['history_path']):
+            #     with open(self.log_paths['history_path'], "r") as f:
+            #         for line in f.readlines()[-5:]:
+            #             memory_information += line
 
-            if os.path.exists(self.log_paths['admissible_commands_path']):
-                memory_information += "\nAdmissible actions for current step: \n"
-                with open(self.log_paths['admissible_commands_path'], "r") as f:
-                    memory_information += f.read()
+            # if os.path.exists(self.log_paths['admissible_commands_path']):
+            #     memory_information += "\nAdmissible actions for current step: \n"
+            #     with open(self.log_paths['admissible_commands_path'], "r") as f:
+            #         memory_information += f.read()
 
             
             if os.path.exists(self.log_paths['rule_path']):

@@ -180,3 +180,10 @@ python run_autogen_eval_loop --gwt --long_term_guidance configs/eval_config.yaml
 export LAMBDA_API_KEY="secret_cog-llm_4ac4efd85b9a4552904bd5b4630c60a4.Al0KM1fEEmrokHGcJQrlQyW4SY8OuCvU"
 export ALFWORLD_DATA=
 
+### Start from a specific game
+
+```sh
+python run_autogen_eval_loop.py --gwt_rule --long_term_guidance configs/eval_config.yaml --start_game_no 6 --log_path runs/rule
+```
+
+
