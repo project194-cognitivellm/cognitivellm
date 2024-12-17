@@ -65,7 +65,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.motor_agent = ConversableAgent(
             name="Motor_Agent",
-            system_message="You call the execute_action function with the proposed action as the argument. For "
+            system_message="You are Motor_Agent, you call the execute_action function with the proposed action as the argument. For "
                            "example, if the proposed action is ACTION[go to desk 1], you should output "
                            "execute_action(\"go to desk 1\"). You must include a call to the execute_action function "
                            "in your output, or you will fail the task. If no proposed action is given, choose a random admissible action as the argument.",
@@ -76,7 +76,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.retrieve_long_term_memory_agent = ConversableAgent(
             name="Retrieve_Long_Term_Memory_Agent",
-            system_message="You always call the retrieve_long_term_memory function with no arguments. Your output should "
+            system_message="You are Retrieve_Long_Term_Memory_Agent, you always call the retrieve_long_term_memory function with no arguments. Your output should "
                            "always be: retrieve_long_term_memory()",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -86,7 +86,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.global_workspace_agent = ConversableAgent(
             name="Global_Workspace_Agent",
             system_message=(
-                "Your goal is to help Planning_Agent solve the given task by "
+                "You are Global_Workspace_Agent, your goal is to help Planning_Agent solve the given task by "
                 "constructing new ideas, theories, explanations, and hypotheses to help whenever Planning_Agent is confused or is proposing repetitive actions."
                 "Example Output: (After taking spoon 1 multiple times)"
                 "\nI noticed we were holding spoon 1 when we tried to open the drawer. Maybe the reason we couldn't open the drawer is because our hands are full. We need to place the spoon 1 somewhere before attempting to open the drawer again."
@@ -99,7 +99,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.conscious_agent = ConversableAgent(
             name="Conscious_Agent",
             system_message=(
-                "You are Conscious_Agent. Your role is to integrate all available information from the ongoing conversation and maintain a continuously updated, first-person narrative model of your environment and your actions within it. This narrative should:"
+                "You are Conscious_Agent, your role is to integrate all available information from the ongoing conversation and maintain a continuously updated, first-person narrative model of your environment and your actions within it. This narrative should:"
                 "\n1. Include all known details of the environment, along with your own state and any items you have encountered."
                 "2. Accurately reflect events that have transpired so far, updating and correcting as new information arrives."
                 "3. Strive for maximum accuracy. When details are uncertain or missing, infer or imagine plausible elements only as a last resort, ensuring consistency and usefulness in the model."
@@ -117,7 +117,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.update_and_retrieve_working_memory_agent = ConversableAgent(
             name="Update_And_Retrieve_Working_Memory_Agent",
-            system_message="You call the update_and_retrieve_working_memory function with the proposed model update as the argument. "
+            system_message="You are Update_And_Retrieve_Working_Memory_Agent, you call the update_and_retrieve_working_memory function with the proposed model update as the argument. "
                            "For example, if the update is Model Update: [I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.]"
                            ", you should output update_and_retrieve_working_memory(\'I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.\'). "
                            "You must include a call to the update_and_retrieve_working_memory function in your output, or you will fail the task. If no model update is given, call update_and_retrieve_working_memory with an empty string as the argument.",
@@ -128,7 +128,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.learning_agent = ConversableAgent(
             name="Learning_Agent",
-            system_message="""You are the Learning Agent. Your task is to continuously refine and extract beneficial, generalizable knowledge (called guidance) from the evolving history of attempts, failures, and successes. Your guidance should adapt over time, incorporating lessons learned from new information as it becomes available. Whenever you receive new history, you should update your guidance if needed.
+            system_message="""You are the Learning Agent, your task is to continuously refine and extract beneficial, generalizable knowledge (called guidance) from the evolving history of attempts, failures, and successes. Your guidance should adapt over time, incorporating lessons learned from new information as it becomes available. Whenever you receive new history, you should update your guidance if needed.
                             Instructions for Online Learning:  
                             - Monitor Changes: As new history is revealed, look for patterns of success or failure that have not been previously captured in your rules.
                             - Update or Add New Guidance: If new insights emerge that differ from past conclusions, modify or add rules accordingly. Avoid duplicating old guidance.
@@ -169,15 +169,15 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.record_long_term_memory_agent = ConversableAgent(
             name="Record_Long_Term_Memory_Agent",
-            system_message="""You call the record_long_term_memory function with the given novel guidance as the argument.
+            system_message="""You are Record_Long_Term_Memory_Agent, you call the record_long_term_memory function with the given novel guidance as the argument.
                                 **Rules:**
                                 - If Learning_Agent gives you novel guidance, call the record_long_term_memory function with the new guidance.
                                 - Otherwise, if Learning_Agent gives you known guidance, do not record previously recorded guidance, instead call the record_long_term_memory function with '' as the argument. Only record novel provided guidance.
                                 - You can only call the record_long_term_memory function once per step, so make sure to wait until the optimal moment to call the record_long_term_memory function.
 
                                 Your output should be either:
-                                - A function call to record_long_term_memory with the novel guidance as the argument, if novel guidance was given: record_long_term_memory([novel guidance received])
-                                - A function call to record_long_term_memory with the novel guidance as the argument, if no novel guidance was given: record_long_term_memory('')                            
+                                - Example 1 (if novel guidance was given): record_long_term_memory([novel guidance received])
+                                - Example 2 (if no novel guidance was given): record_long_term_memory('')                            
                     """,
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -193,25 +193,16 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.short_term_memory_summarizer_agent = ConversableAgent(
             name="Short_Term_Memory_Summarizer_Agent",
-            system_message="You execute the update_and_retrieve_working_memory function and summarize the crucial information in the output for solving the task.",
+            system_message="You are Short_Term_Memory_Summarizer_Agent, you execute the update_and_retrieve_working_memory function and summarize the crucial information in the output for solving the task.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
         )
         self.long_term_memory_summarizer_agent = ConversableAgent(
             name="Long_Term_Memory_Summarizer_Agent",
-            system_message="You execute the retrieve_long_term_memory function and summarize the crucial information in the output for solving the task.",
+            system_message="You are Long_Term_Memory_Summarizer_Agent, you execute the retrieve_long_term_memory function and summarize the crucial information in the output for solving the task.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
-            is_termination_msg=lambda msg: False,
-        )
-
-        self.focus_agent = ConversableAgent(
-            name="Focus_Agent",
-            system_message="You continuously check if the task has been completed. "
-                           "If the task has been completed, execute the function retrieve_working_memory with '' as the argument "
-                           "and then summarize the output.",
-            llm_config=self.llm_config,
             is_termination_msg=lambda msg: False,
         )
 
@@ -235,7 +226,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.motor_agent.description = (
             "calls the execute_action function with the proposed action as the argument to perform the suggested action"
         )
-        self.external_perception_agent.description = "executes the execute_action function and reports the output as feedback."
+        self.external_perception_agent.description = "executes the given execute_action function call and reports the output as feedback."
         self.conscious_agent.description = "integrates all available information from the ongoing conversation and maintains a continuously updated, first-person narrative model of the environment and actions within it"
         self.update_and_retrieve_working_memory_agent.description = "calls the update_and_retrieve_working_memory function with the proposed model update as the argument"
         self.short_term_memory_summarizer_agent.description = "executes the update_and_retrieve_working_memory function and summarizes the crucial information in the output for solving the task"
@@ -293,7 +284,7 @@ class GWTAutogenAgent(AutogenAgent):
             with open(self.log_paths['guidance_path'], "a+") as f:
                 f.write(f"{guidance}\n")
                 lines = f.readlines()
-                if len(lines) > 10:
+                if len(lines) > 15:
                     f.seek(0)
                     f.truncate()
                     for line in lines[:-1]:
@@ -305,24 +296,6 @@ class GWTAutogenAgent(AutogenAgent):
         # Define retrieve_memory function, return all the content in the memory.txt file
         def retrieve_long_term_memory() -> str:
             memory_information = ""
-
-            if os.path.exists(self.log_paths['task_path']):
-                with open(self.log_paths['task_path'], "r") as f:
-                    memory_information += f.read()
-
-            # latest 10 steps. last 10 lines
-            memory_information += "\nRecent 5 steps History: \n"
-            if os.path.exists(self.log_paths['history_path']):
-                with open(self.log_paths['history_path'], "r") as f:
-                    for line in f.readlines()[-5:]:
-                        memory_information += line
-
-            if os.path.exists(self.log_paths['admissible_commands_path']):
-                memory_information += "\nAdmissible commands for current step: \n"
-                with open(self.log_paths['admissible_commands_path'], "r") as f:
-                    memory_information += f.read()
-            else:
-                memory_information += "No admissible commands information found.\n"
 
             if os.path.exists(self.log_paths['guidance_path']):
                 memory_information += "\nGuidance: "
@@ -363,7 +336,7 @@ class GWTAutogenAgent(AutogenAgent):
             [self.long_term_memory_summarizer_agent]
         )
 
-    def initialize_groupchat(self, max_chat_round=2000):
+    def initialize_groupchat(self, max_chat_round=200):
 
         self.group_chat = GroupChat(
             agents=[

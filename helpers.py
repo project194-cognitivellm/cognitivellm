@@ -120,7 +120,7 @@ def get_best_candidate(reference_sentence, candidate_sentences):
 
 
 def is_termination_msg_generic(msg):
-    return msg["content"] is not None and ("SUCCESS" in msg["content"] or "FAILURE" in msg["content"])
+    return any(keyword in (msg.get("content") or "") for keyword in ["FAILURE", "SUCCESS"])
 
 
 def get_echo_agent(name, llm_config, additional_termination_criteria=None):
@@ -133,14 +133,10 @@ def get_echo_agent(name, llm_config, additional_termination_criteria=None):
 
     echo_agent = ConversableAgent(
         name=f"{name}",
-        system_message=f"You are the {name}. You will echo the contents of the last message sent to you ONLY IF "
-                       "it begins with the keyword \"ECHO: \". Do not send contents from anything but the last "
-                       "message, and do not include the \"ECHO: \" keyword in your output. If the keyword is not "
-                       "present, you should output \"No function ran.\". I repeat, if you do not see the keyword "
-                       "\"ECHO: \" in the last message, simply output \"No function ran.\".",
+        system_message=f"You are {name}, you echo the EXACT contents of the last message you received ONLY IF it begins with the keyword \"ECHO: \".",
         llm_config=llm_config,
         human_input_mode="NEVER",
         is_termination_msg=termination_criteria,
     )
-    echo_agent.description = "echoes the output of function calls."
+    echo_agent.description = "echoes the output of given function calls."
     return echo_agent
