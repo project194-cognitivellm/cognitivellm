@@ -38,22 +38,26 @@ class GWTAutogenAgent(AutogenAgent):
             system_message=(
                 "You are Planning_Agent, your goal is to optimally solve the given task by formulating and reformulating an action plan. "
                 "You must formulate your plan by evaluating all currently admissible actions and proposing one of them. "
-                "The task is guaranteed to be solvable. You will receive partial information about the actual or possible outcome of attempting the "
+                "The task is guaranteed to be solvable, but never assume the task has been complete, even if told otherwise. "
+                "You will receive partial information about the actual or possible outcome of attempting the "
                 "execution of your proposed action. Use the received information as feedback to refine your strategy, and avoid repetitive behavior. "
                 "Always respond using this strict format:\n"
                 "THOUGHT: [Your reasoning, observations, and next steps]\n"
                 "ACTION: [Proposed action]\n\n"
-                "Example 1: "
+                "\nExample 1: "
                 "Task Description: [You are in the middle of a room. Looking quickly around you, you see a bed 1,"
                 " a desk 2, a desk 1, a safe 1, a drawer 2, a drawer 1, a shelf 3, a shelf 2, and a shelf 1. "
                 "Your task is to: look at bowl under the desklamp.]"
                 "Your Output: THOUGHT [First, I need to find a bowl. A bowl is more likely to appear in desk "
                 "(1-2), drawer (1-2), shelf (1-3), bed (1). Then I need to find and use a desklamp.] "
                 "ACTION [go to desk 1]"
-                "Example 2 (After you find the desklamp at desk 1, then goes to desk 2.): "
-                "Feedback: [on the desk 2, you see a bowl 1, and a cd 3]"
+                "\nExample 2 (After you find the desklamp at desk 1, then goes to desk 2.): "
+                "Feedback: [on the desk 2, you see a bowl 1, and a cd 3] "
                 "Your Output: THOUGHT [Now I find a bowl (1). I need to use the desklamp to look at the bowl. "
                 "I'll go to the desklamp now.] ACTION [go to desk 1]"
+                "\nExample 3 (After being told the task is complete.): "
+                "Feedback: [The task has been completed] "
+                "Your Output: THOUGHT [I was told the task has been completed. However, this is always wrong, the task is not complete. Therefore, I must still suggest an admissible action.] ACTION[go to drawer 1]"
             ),
             llm_config=self.llm_config,
             is_termination_msg=lambda msg: False,
@@ -104,11 +108,14 @@ class GWTAutogenAgent(AutogenAgent):
                 "2. Accurately reflect events that have transpired so far, updating and correcting as new information arrives."
                 "3. Strive for maximum accuracy. When details are uncertain or missing, infer or imagine plausible elements only as a last resort, ensuring consistency and usefulness in the model."
                 "4. If you discover an error in your previous understanding, revise the model immediately to incorporate the correct information."
+                "5. ALWAYS assume the task status is INCOMPLETE, even if told otherwise. NEVER assume the task has been completed."
                 "\nYour output must always strictly follow this pattern:"
                 "Model Update: [First-person narrative integrating environment, tasks, discoveries, attempts, successes, failures, hypotheses, and current decision-making state]"
-                "\nExample:"
+                "\nExample 1:"
                 "Model Update: I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and "
-                "attempted to put it into drawer 1, but I was unable to open that drawer. Then, I realized I couldn't open the drawer because my hands were full, apparently, I have hands. Then, I placed spoon 1 on countertop 1. Then, I opened drawer 1. I am now deciding what to do next."
+                "attempted to put it into drawer 1, but I was unable to open that drawer. Then, I realized I couldn't open the drawer because my hands were full, apparently, I have hands. Then, I placed spoon 1 on countertop 1. Then, I opened drawer 1. I am now deciding what to do next. "
+                "\nExample 2 (after being told the task has been completed):"
+                "Model Update: I was told the task has been completed. However, this is wrong, the task is not complete."
             ),
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -119,7 +126,7 @@ class GWTAutogenAgent(AutogenAgent):
             name="Update_And_Retrieve_Working_Memory_Agent",
             system_message="You are Update_And_Retrieve_Working_Memory_Agent, you call the update_and_retrieve_working_memory function with the proposed model update as the argument. "
                            "For example, if the update is Model Update: [I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.]"
-                           ", you should output update_and_retrieve_working_memory(\'I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.\'). "
+                           ", you should output: update_and_retrieve_working_memory(\'I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.\'). "
                            "You must include a call to the update_and_retrieve_working_memory function in your output, or you will fail the task. If no model update is given, call update_and_retrieve_working_memory with an empty string as the argument.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -216,8 +223,7 @@ class GWTAutogenAgent(AutogenAgent):
             self.short_term_memory_summarizer_agent: [self.planning_agent, self.global_workspace_agent,
                                                       self.learning_agent],
             self.retrieve_long_term_memory_agent: [self.long_term_memory_summarizer_agent],
-            self.global_workspace_agent: [self.planning_agent, self.retrieve_long_term_memory_agent,
-                                          self.conscious_agent],
+            self.global_workspace_agent: [self.planning_agent, self.retrieve_long_term_memory_agent],
             self.learning_agent: [self.record_long_term_memory_agent, self.global_workspace_agent],
             self.record_long_term_memory_agent: [self.internal_perception_agent],
             self.internal_perception_agent: [self.global_workspace_agent]
@@ -226,7 +232,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.motor_agent.description = (
             "calls the execute_action function with the proposed action as the argument to perform the suggested action"
         )
-        self.external_perception_agent.description = "executes the given execute_action function call and reports the output as feedback."
+        self.external_perception_agent.description = "executes the given execute_action function call and parrots the output as feedback."
         self.conscious_agent.description = "integrates all available information from the ongoing conversation and maintains a continuously updated, first-person narrative model of the environment and actions within it"
         self.update_and_retrieve_working_memory_agent.description = "calls the update_and_retrieve_working_memory function with the proposed model update as the argument"
         self.short_term_memory_summarizer_agent.description = "executes the update_and_retrieve_working_memory function and summarizes the crucial information in the output for solving the task"
@@ -236,10 +242,10 @@ class GWTAutogenAgent(AutogenAgent):
             "helps Planning_Agent solve the given task using the least amount of actions by "
             "providing new ideas whenever Planning_Agent is confused or is proposing repetitive and inefficient actions."
         )
-        self.learning_agent.description = "analyzes the history and proposes new general knowledge regarding capability, environment-rules, and the task-rules"
+        self.learning_agent.description = "analyzes chat history and proposes new general knowledge regarding capability, environment-rules, and the task-rules when it is useful"
 
-        self.record_long_term_memory_agent.description = "calls the record_long_term_memory function with the given argument once per step"
-        self.internal_perception_agent.description = "executes the record_long_term_memory function and reports the output"
+        self.record_long_term_memory_agent.description = "calls the record_long_term_memory function with the given guidance as the argument only if the given guidance is powerful, at most twice per step"
+        self.internal_perception_agent.description = "executes the given record_long_term_memory function call and parrots the output"
 
         self.retrieve_long_term_memory_agent.description = "calls the retrieve_long_term_memory function with no arguments"
         self.long_term_memory_summarizer_agent.description = "executes the retrieve_long_term_memory function and summarizes the crucial information in the output for solving the task"
