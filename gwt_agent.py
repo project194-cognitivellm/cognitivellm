@@ -54,9 +54,6 @@ class GWTAutogenAgent(AutogenAgent):
                 "Feedback: [on the desk 2, you see a bowl 1, and a cd 3]"
                 "Your Output: THOUGHT [Now I find a bowl (1). I need to use the desklamp to look at the bowl. "
                 "I'll go to the desklamp now.] ACTION [go to desk 1]"
-                "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
-                "Never assume you have successfully completed the task. Once you complete the task, the chat will end "
-                "on its own. If you do not provide an action suggestion, you will fail the task."
             ),
             llm_config=self.llm_config,
             is_termination_msg=lambda msg: False,
@@ -71,10 +68,7 @@ class GWTAutogenAgent(AutogenAgent):
             system_message="You call the execute_action function with the proposed action as the argument. For "
                            "example, if the proposed action is ACTION[go to desk 1], you should output "
                            "execute_action(\"go to desk 1\"). You must include a call to the execute_action function "
-                           "in your output, or you will fail the task. If no proposed action is given, choose a random admissible action as the argument."
-                           "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
-                           "Never assume you have successfully completed the task. Once you complete the task, the chat will end "
-                           "on its own. If you do not provide an action suggestion, you will fail the task.",
+                           "in your output, or you will fail the task. If no proposed action is given, choose a random admissible action as the argument.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -83,10 +77,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.retrieve_long_term_memory_agent = ConversableAgent(
             name="Retrieve_Long_Term_Memory_Agent",
             system_message="You always call the retrieve_long_term_memory function with no arguments. Your output should "
-                           "always be: retrieve_long_term_memory()"
-                           "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
-                           "Never assume you have successfully completed the task. Once you complete the task, the chat will end "
-                           "on its own. If you do not provide an action suggestion, you will fail the task.",
+                           "always be: retrieve_long_term_memory()",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -99,9 +90,6 @@ class GWTAutogenAgent(AutogenAgent):
                 "constructing new ideas, theories, explanations, and hypotheses to help whenever Planning_Agent is confused or is proposing repetitive actions."
                 "Example Output: (After taking spoon 1 multiple times)"
                 "\nI noticed we were holding spoon 1 when we tried to open the drawer. Maybe the reason we couldn't open the drawer is because our hands are full. We need to place the spoon 1 somewhere before attempting to open the drawer again."
-                "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
-                "Never assume you have successfully completed the task. Once you complete the task, the chat will end "
-                "on its own."
             ),
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -121,8 +109,6 @@ class GWTAutogenAgent(AutogenAgent):
                 "\nExample:"
                 "Model Update: I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and "
                 "attempted to put it into drawer 1, but I was unable to open that drawer. Then, I realized I couldn't open the drawer because my hands were full, apparently, I have hands. Then, I placed spoon 1 on countertop 1. Then, I opened drawer 1. I am now deciding what to do next."
-                "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
-                "Never assume you have successfully completed the task. Once you complete the task, the chat will end on its own."
             ),
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -134,9 +120,7 @@ class GWTAutogenAgent(AutogenAgent):
             system_message="You call the update_and_retrieve_working_memory function with the proposed model update as the argument. "
                            "For example, if the update is Model Update: [I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.]"
                            ", you should output update_and_retrieve_working_memory(\'I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.\'). "
-                           "You must include a call to the update_and_retrieve_working_memory function in your output, or you will fail the task. If no model update is given, call update_and_retrieve_working_memory with an empty string as the argument."
-                           "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
-                           "Never assume you have successfully completed the task. Once you complete the task, the chat will end on its own.",
+                           "You must include a call to the update_and_retrieve_working_memory function in your output, or you will fail the task. If no model update is given, call update_and_retrieve_working_memory with an empty string as the argument.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -177,10 +161,6 @@ class GWTAutogenAgent(AutogenAgent):
                             2. ...
                             3. ...
                             ...
-
-                            VERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. 
-                            Never assume you have successfully completed the task. Once you complete the task, the chat will end 
-                            on its own.
                     """,
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -189,22 +169,15 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.record_long_term_memory_agent = ConversableAgent(
             name="Record_Long_Term_Memory_Agent",
-            system_message="""You call the record_long_term_memory function with the appropriate arguments.
+            system_message="""You call the record_long_term_memory function with the given novel guidance as the argument.
                                 **Rules:**
-                                - If Learning_Agent outputs new unseen guidance, call record_long_term_memory with the new rules.
-                                - If Learning_Agent states "NO NEW GUIDANCE at this time.", do not call record_long_term_memory.
-                                - Do not record previously recorded guidance. Only record newly provided guidance.
-                                - You can only call record_long_term_memory once per step.
-                                - Do not use or call any tools other than record_long_term_memory.
+                                - If Learning_Agent gives you novel guidance, call the record_long_term_memory function with the new guidance.
+                                - Otherwise, if Learning_Agent gives you known guidance, do not record previously recorded guidance, instead call the record_long_term_memory function with '' as the argument. Only record novel provided guidance.
+                                - You can only call the record_long_term_memory function once per step, so make sure to wait until the optimal moment to call the record_long_term_memory function.
 
                                 Your output should be either:
-                                - A function call to record_long_term_memory with the new guidance (if new guidance was given), or
-                                - Nothing (if there is no new guidance).
-
-                                \nFor example, if novel guidance is given: record_long_term_memory([novel guidance received])
-
-                                \nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. 
-                                Never assume you have successfully completed the task. Once you complete the task, the chat will end on its own.
+                                - A function call to record_long_term_memory with the novel guidance as the argument, if novel guidance was given: record_long_term_memory([novel guidance received])
+                                - A function call to record_long_term_memory with the novel guidance as the argument, if no novel guidance was given: record_long_term_memory('')                            
                     """,
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -219,19 +192,15 @@ class GWTAutogenAgent(AutogenAgent):
         self.internal_perception_agent = get_echo_agent("Internal_Perception_Agent", llm_config)
 
         self.short_term_memory_summarizer_agent = ConversableAgent(
-            name="Short_Term_Memory__Summarizer_Agent",
-            system_message="You execute update_and_retrieve_working_memory and summarize the crucial information in the output for solving the task."
-                           "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
-                           "Never assume you have successfully completed the task. Once you complete the task, the chat will end on its own.",
+            name="Short_Term_Memory_Summarizer_Agent",
+            system_message="You execute the update_and_retrieve_working_memory function and summarize the crucial information in the output for solving the task.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
         )
         self.long_term_memory_summarizer_agent = ConversableAgent(
             name="Long_Term_Memory_Summarizer_Agent",
-            system_message="You execute retrieve_long_term_memory and summarize the crucial information in the output for solving the task."
-                           "\nVERY IMPORTANT: So long as you are being queried, you have not yet successfully completed the task. "
-                           "Never assume you have successfully completed the task. Once you complete the task, the chat will end on its own.",
+            system_message="You execute the retrieve_long_term_memory function and summarize the crucial information in the output for solving the task.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -247,40 +216,42 @@ class GWTAutogenAgent(AutogenAgent):
         )
 
         self.allowed_transitions = {
-            self.planning_agent: [self.motor_agent, self.global_workspace_agent],
+            self.planning_agent: [self.motor_agent],
             self.motor_agent: [self.external_perception_agent],
             self.external_perception_agent: [self.conscious_agent],
             self.conscious_agent: [self.update_and_retrieve_working_memory_agent],
             self.update_and_retrieve_working_memory_agent: [self.short_term_memory_summarizer_agent],
             self.long_term_memory_summarizer_agent: [self.conscious_agent],
-            self.short_term_memory_summarizer_agent: [self.planning_agent, self.global_workspace_agent, self.learning_agent],
+            self.short_term_memory_summarizer_agent: [self.planning_agent, self.global_workspace_agent,
+                                                      self.learning_agent],
             self.retrieve_long_term_memory_agent: [self.long_term_memory_summarizer_agent],
-            self.global_workspace_agent: [self.planning_agent, self.retrieve_long_term_memory_agent, self.conscious_agent],
-            self.learning_agent: [self.record_long_term_memory_agent],
+            self.global_workspace_agent: [self.planning_agent, self.retrieve_long_term_memory_agent,
+                                          self.conscious_agent],
+            self.learning_agent: [self.record_long_term_memory_agent, self.global_workspace_agent],
             self.record_long_term_memory_agent: [self.internal_perception_agent],
             self.internal_perception_agent: [self.global_workspace_agent]
         }
 
         self.motor_agent.description = (
-            "calls execute_action with the proposed action as the argument to perform the suggested action"
+            "calls the execute_action function with the proposed action as the argument to perform the suggested action"
         )
-        self.external_perception_agent.description = "executes execute_action and reports the output as feedback."
+        self.external_perception_agent.description = "executes the execute_action function and reports the output as feedback."
         self.conscious_agent.description = "integrates all available information from the ongoing conversation and maintains a continuously updated, first-person narrative model of the environment and actions within it"
-        self.update_and_retrieve_working_memory_agent.description = "calls update_and_retrieve_working_memory with the proposed model update as the argument"
-        self.short_term_memory_summarizer_agent.description = "executes update_and_retrieve_working_memory and summarizes the crucial information in the output for solving the task"
+        self.update_and_retrieve_working_memory_agent.description = "calls the update_and_retrieve_working_memory function with the proposed model update as the argument"
+        self.short_term_memory_summarizer_agent.description = "executes the update_and_retrieve_working_memory function and summarizes the crucial information in the output for solving the task"
 
         self.planning_agent.description = "generates plans and makes action decisions to solve the task"
         self.global_workspace_agent.description = (
             "helps Planning_Agent solve the given task using the least amount of actions by "
             "providing new ideas whenever Planning_Agent is confused or is proposing repetitive and inefficient actions."
         )
-        self.learning_agent.description = "analyzes the history and proposes new general knowledge of capability, the environment, and the task"
+        self.learning_agent.description = "analyzes the history and proposes new general knowledge regarding capability, environment-rules, and the task-rules"
 
         self.record_long_term_memory_agent.description = "calls the record_long_term_memory function with the given argument once per step"
-        self.internal_perception_agent.description = "executes record_long_term_memory and reports the output"
+        self.internal_perception_agent.description = "executes the record_long_term_memory function and reports the output"
 
-        self.retrieve_long_term_memory_agent.description = "calls retrieve_long_term_memory with no arguments"
-        self.long_term_memory_summarizer_agent.description = "executes retrieve_long_term_memory and summarizes the crucial information in the output for solving the task"
+        self.retrieve_long_term_memory_agent.description = "calls the retrieve_long_term_memory function with no arguments"
+        self.long_term_memory_summarizer_agent.description = "executes the retrieve_long_term_memory function and summarizes the crucial information in the output for solving the task"
 
         self.start_agent = self.external_perception_agent
 
@@ -316,6 +287,9 @@ class GWTAutogenAgent(AutogenAgent):
         # Define record_memory function
         def record_long_term_memory(guidance: str) -> str:
             # the maximum number of lines are 5; if more than 5, delete the oldest one.
+            if (guidance == ''):
+                return "no novel knowledge recorded"
+
             with open(self.log_paths['guidance_path'], "a+") as f:
                 f.write(f"{guidance}\n")
                 lines = f.readlines()
