@@ -32,7 +32,7 @@ SallCo is a framework for creating specialized agentic large language models for
 ## Installation
 
 ### Ubuntu
-1. Install ALFWorld and test run autogen
+1. Install ALFWorld
     ```sh
     conda create -n cogllm python=3.9
     conda activate cogllm
@@ -47,6 +47,11 @@ SallCo is a framework for creating specialized agentic large language models for
    pip install autogen-agentchat~=0.2
    pip install nltk
    pip install flaml[automl]
+   ```
+
+3. Install sentence-transformers
+   ```sh
+   pip install -U sentence-transformers
    ```
 
 ### Windows
@@ -108,7 +113,7 @@ You can choose from the following agent types:
 - `--baseline`: Baseline agent from AUTOGEN paper
 - `--gwt`: SallCo with guidance agent
 - `--gwt_rule`: SallCo with rule agent
-- `--gwt_rule_simplified`: SallCo with simplified rule agent
+- `--gwt_rule_simplified`: SallCo with simplified rule agent. Initial version has 7 agents. This version has 4 agents.
 
 ### Optional Arguments
 - `--long_term_memory`: Enable long-term memory feature
@@ -193,5 +198,12 @@ self.group_chat = GroupChat(
     send_introductions=True
 )
 ```
+
+### Test action action
+The LLM agent's responses may not always be well-structured or directly match any of ALFWorld’s admissible actions. For example, the LLM might respond with "walk to the kitchen," which is not an admissible action in ALFWorld, while "go to the kitchen" is. To address this, we need to identify the admissible action that is most semantically similar to the LLM’s answer.
+
+We use the *sentence-transformers* library to measure semantic similarity between the LLM’s response and ALFWorld’s admissible actions. Additionally, the `test_action_score.ipynb` notebook helps determine an appropriate similarity threshold to decide when two actions should be considered equivalent.
+
+
 
 
