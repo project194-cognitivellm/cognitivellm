@@ -249,10 +249,10 @@ class GWTAutogenAgent(AutogenAgent):
                     for line in f.readlines()[-5:]:
                         memory_information += line
 
-            if os.path.exists(self.log_paths['admissible_commands_path']):
-                memory_information += "\nAdmissible actions for current step: \n"
-                with open(self.log_paths['admissible_commands_path'], "r") as f:
-                    memory_information += f.read()
+            # if os.path.exists(self.log_paths['admissible_commands_path']):
+            #     memory_information += "\nAdmissible actions for current step: \n"
+            #     with open(self.log_paths['admissible_commands_path'], "r") as f:
+            #         memory_information += f.read()
 
             
             if os.path.exists(self.log_paths['guidance_path']):
@@ -262,7 +262,7 @@ class GWTAutogenAgent(AutogenAgent):
 
                 
                 
-            if self.args.long_term_guidance:
+            if self.args.long_term_memory:
                 if len(self.log_paths['previous_guidance_path']) > 0:
                     memory_information += "\nPrevious Guidance: \n"
                     for previous_guidance_path in self.log_paths['previous_guidance_path']:

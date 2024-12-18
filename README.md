@@ -1,13 +1,53 @@
-# CognitiveLLM
-
+# SallCo: Specialized Agentic Large Language Models for Cognitive Functions
 
 ## Table of Contents
-
-- [Installation](#installation)
 - [Description](#description)
+  - [SallCo](#sallco)
+  - [ALFWorld](#alfworld)
+- [Installation](#installation)
+  - [Ubuntu](#ubuntu)
+  - [Windows (via WSL)](#windows-via-wsl)
+  - [Lambda Compatibility](#lambda-compatibility)
+- [Quick Start](#quick-start)
+  - [Agent Types](#agent-types)
+  - [Optional Arguments](#optional-arguments)
+  - [Output and Logging](#output-and-logging)
+- [Additional Features](#additional-features)
+  - [Resume Chat](#resume-chat)
+  - [Loop Transition](#loop-transition)
 
+
+## Description
+
+### SallCo
+SallCo is a framework for creating specialized agentic large language models for cognitive functions based on AutoGen.
+
+### ALFWorld
+**ALFWorld** is a text-basedgym environment, where we use to test SallCo. The initial observation includes the environment state and a **Task Description**. Subsequent observations only include the environment state. AutoGen can interact with `env.step()` to receive new observations.
+
+**Scripts**:
+1. `alfworld_random_agent.py`: Run a random agent on the ALFWorld environment.
+2. `interactive_alfworld.py`: Interactively run ALFWorld environment steps.
 
 ## Installation
+
+### Ubuntu
+1. Install ALFWorld and test run autogen
+    ```sh
+    conda create -n cogllm python=3.9
+    conda activate cogllm
+    pip install 'alfworld[full]'
+    export ALFWORLD_DATA=<storage_path>
+    alfworld-download
+    alfworld-download --extra
+    ```
+
+2. Install Autogen.
+   ```sh
+   pip install autogen-agentchat~=0.2
+   pip install nltk
+   pip install flaml[automl]
+   ```
 
 ### Windows
 Be sure to use WSL in Windows to install the `jericho` package. Ideally, if in Windows, should use WSL to install conda, if not done so already. If using windows, please be sure to run the following commands.
@@ -22,52 +62,8 @@ sudo apt-get install zlib1g-dev
 sudo apt-get install libssl-dev libffi-dev
 pip3 install cython
 ```
-
 Then, follow the ubuntu installation instructions.
-### Ubuntu
-1. Install ALFWorld and test run autogen
-    ```sh
-    conda create -n cogllm python=3.9
-    conda activate cogllm
-    pip install 'alfworld[full]'
-    export ALFWORLD_DATA=<storage_path>
-    alfworld-download
-    alfworld-download --extra
-    python run_autogen configs/base_config.yaml
-    ```
 
-2. Install Autogen.
-   ```sh
-   pip install autogen-agentchat~=0.2
-   pip install nltk
-   pip install flaml[automl]
-   ```
-
-## Description
-### ALFWorld
-ALFWorld is a gym environment. The initial observation includes the environment state and **Task Description**. Following observations only include environment states. We can let AutoGen call the *env.step()* function and get the observation.
-
-Scripts:
-1. `alfworld_random_agent.py`: Runs random agent on ALFWorld environment.
-2. `interactive_alfworld.py`: Interactive mode to run ALFWorld environment.
-
-### AutoGen
-We apply AutoGen to the ALFWorld environment, mimicking the conversation pattern and prompts from the original AutoGen paper.
-
-Scripts:
-1. `run_autogen.py`: Runs a single trajectory of an AutoGen agent on ALFWorld environment.
-
-
-### Evaluation
-Evaluation script for ALFWorld. It is controlled by user.
-```sh
-python alfworld_eval.py configs/eval_config.yaml 
-```
-
-Evaluation script for AutoGen on ALFWorld.
-```sh
-python run_autogen.py configs/eval_config.yaml 
-```
 
 ### Lambda Compatibility
 In order to make our code compatible with Lambda models, I needed to make a few changes to the base code 
@@ -85,8 +81,12 @@ llm_config = {
     "max_tokens": 300,
     "config_list": [{"model": MODEL, "api_key": API_KEY, "base_url": BASE_URL}]}
 ```
+2. export the API key
+```sh
+export LAMBDA_API_KEY=<your_api_key>
+```
 
-2. When registering tools, instead of using the library's register_function method, I used a custom method defined in
+3. When registering tools, instead of using the library's register_function method, I used a custom method defined in
 `helpers.py`. Also, instead of registering the function to the agent which calls it, I register all functions to an
 Echo Agent which states the output of the executed function. See baseline_agent.py and gwt_agent.py for examples.
 
@@ -95,14 +95,41 @@ You can run the code with the following command (`--baseline` can be replaced wi
 python run_autogen_eval_loop --baseline configs/eval_config.yaml
 ```
 
-### Loop GWT (Old)
-Loop GWT script for AutoGen on ALFWorld.
+
+
+## Quick Start
+You can try SallCo with the following command:
 ```sh
-python run_autogen_eval_loop.py configs/eval_config.yaml 
+python run_autogen_eval_loop.py --gwt_rule --long_term_memory configs/eval_config.yaml --start_game_no 0 --log_path runs/rule_long_term
 ```
 
-Key features:
-1. Resume chat from the last message. If the chat fails, it will try 3 times. Check the following code for details.
+### Agent Types
+You can choose from the following agent types:
+- `--baseline`: Baseline agent from AUTOGEN paper
+- `--gwt`: SallCo with guidance agent
+- `--gwt_rule`: SallCo with rule agent
+- `--gwt_rule_simplified`: SallCo with simplified rule agent
+
+### Optional Arguments
+- `--long_term_memory`: Enable long-term memory feature
+  - The agent will summarize and learn task-relevant guidance or task-irrelevant rules in each game
+  - Guidance/rules are saved to `guidance.txt` / `rule.txt`
+  - Previous games' guidances or rules will influence current game decisions
+- `--log_path <path>`: Specify custom log directory
+  - Defaults to timestamp-based naming if not provided
+- `--start_game_no <number>`: Set starting game number
+  - Defaults to 1 if not provided
+
+### Output and Logging
+- Metrics are saved to:
+  - Specified log path
+  - Weights & Biases (default project: "cogllm")
+- Error messages from LLM agents are recorded in the log file
+
+
+## Additional Features
+### Resume Chat
+Resume chat from the last message. Group chat sometimes fails due to some errors like server error. We cannot count it as a failure and we need to resume the chat. Check the following code for details.
 ```sh
 max_num_of_resume = 3
 if chat_result is None:
@@ -118,7 +145,8 @@ if chat_result is None:
             break
 ```
 
-2. Loop transition. When A talks to B, B talks to C. But sometimes, B will need to talk to A again. For example, command evaluation agent finds there are no addmissible command which can complete the task. Then he needs to tell back to previous agent, let him replan. So there is a loop transition. Check the following code for details.
+### Loop Transition
+When A talks to B, B talks to C. But sometimes, B will need to talk to A again. For example, command evaluation agent finds there are no addmissible command which can complete the task. Then he needs to tell back to previous agent, let him replan. So there is a loop transition. Check the following code for details.
 ```sh
 def state_transition(last_speaker, groupchat):
     messages = groupchat.messages
@@ -164,26 +192,6 @@ self.group_chat = GroupChat(
     max_round=200,
     send_introductions=True
 )
-```
-
-### Long Term Guidance
-This is a new feature that I added to the code. In every game, the agent will summarize and learn the guidance of the task. It will be saved in the `guidance.txt` file. During this game, the guidance will be used to guide the agent's action. Long term guidance means that the guidance learned in previous games will be used to guide the agent's action in current game. Use `--long_term_guidance` to enable this feature. 
-
-To run the code with long term guidance, use the following command:
-
-```sh
-python run_autogen_eval_loop --gwt --long_term_guidance configs/eval_config.yaml
-```
-
-
-### Lambda
-export LAMBDA_API_KEY="secret_cog-llm_4ac4efd85b9a4552904bd5b4630c60a4.Al0KM1fEEmrokHGcJQrlQyW4SY8OuCvU"
-export ALFWORLD_DATA=
-
-### Start from a specific game
-
-```sh
-python run_autogen_eval_loop.py --gwt_rule --long_term_guidance configs/eval_config.yaml --start_game_no 6 --log_path runs/rule
 ```
 
 

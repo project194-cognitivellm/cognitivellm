@@ -11,6 +11,7 @@ import alfworld.agents.modules.generic as generic
 import alfworld.agents.environment as environment
 from gwt_agent import GWTAutogenAgent
 from gwt_agent_rule import GWTRuleAutogenAgent
+from gwt_agent_rule_simplified import GWTRuleSimplifiedAutogenAgent
 from baseline_agent import BaselineAutogenAgent
 import wandb    # Install wandb, use wandb login in cmd, and then run the code
 
@@ -35,14 +36,19 @@ def parse_arguments():
     group.add_argument(
         "--gwt_rule",
         action="store_true",
-        help="Use the GWTRuleAutogenAgent with rule for evaluation."
+        help="Use the GWTRuleAutogenAgent for evaluation."
     )
     
+    group.add_argument(
+        "--gwt_rule_simplified",
+        action="store_true",
+        help="Use the GWTRuleSimplifiedAutogenAgent for evaluation."
+    )
     
     parser.add_argument(
-        "--long_term_guidance",
+        "--long_term_memory",
         action="store_true",
-        help="Use long term guidance."
+        help="Use long term memory."
     )
     
     parser.add_argument(
@@ -74,6 +80,9 @@ if __name__ == "__main__":
     elif args.gwt_rule:
         agent_class = GWTRuleAutogenAgent
         agent_name = "GWTRuleAutogenAgent"
+    elif args.gwt_rule_simplified:
+        agent_class = GWTRuleSimplifiedAutogenAgent
+        agent_name = "GWTRuleSimplifiedAutogenAgent"
     else:
         raise ValueError("No agent specified. Use --baseline or --gwt.")
     print(f"Selected Agent: {agent_name}")
@@ -138,6 +147,8 @@ if __name__ == "__main__":
                 ## For each set, there are `num_games` games we need to evaluate
                 num_games = alfred_env.num_games
                 
+                for i in range(args.start_game_no):
+                    env.reset()
 
                 for i in range(args.start_game_no, num_games):
                     print("Initialized Environment")

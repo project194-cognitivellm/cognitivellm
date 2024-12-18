@@ -140,7 +140,7 @@ class GWTRuleAutogenAgent(AutogenAgent):
             
             **Important:**
             1. DO NOT do anything else. 
-            2. Do not assume similar objects are interchangeable. If the task specifies placing a spray bottle in or on toilet 1, do not propose goals like "place a soap bottle in or on toilet 1." Spray bottles and soap bottles are distinct and must not be confused.
+            2. Your task is clear and you cannot use similart objects to complete the task. For example, if the task specifies placing a sodabottle in or on toilet 1, DO NOT "place a milkbottle in or on toilet 1." Sodabottles and milkbottles are distinct. And "cold milk" is different from "milk".
             
 
             **Output Format:**
@@ -222,7 +222,7 @@ class GWTRuleAutogenAgent(AutogenAgent):
 
             action, action_score = get_best_candidate(suggested_action, admissible_commands)
 
-            if action_score < 0.8:
+            if action_score < 0.92:
                 self.obs = [f"action '{suggested_action}' is not admissible."]
                 self.success = False
                 with open(self.log_paths['history_path'], "a+") as f:
@@ -268,9 +268,9 @@ class GWTRuleAutogenAgent(AutogenAgent):
         def retrieve_memory() -> str:
             memory_information = ""
 
-            # if os.path.exists(self.log_paths['task_path']):
-            #     with open(self.log_paths['task_path'], "r") as f:
-            #         memory_information += f.read()
+            if os.path.exists(self.log_paths['task_path']):
+                with open(self.log_paths['task_path'], "r") as f:
+                    memory_information += f.read()
 
             # # latest 5 steps. last 5 lines
             # memory_information += "\nRecent 5 steps History: \n"
@@ -292,13 +292,18 @@ class GWTRuleAutogenAgent(AutogenAgent):
 
                 
                 
-            if self.args.long_term_guidance:
+            if self.args.long_term_memory:
                 if len(self.log_paths['previous_rule_path']) > 0:
                     memory_information += "\nPrevious Rules: \n"
+                    previous_rules = []
                     for previous_rule_path in self.log_paths['previous_rule_path']:
                         if os.path.exists(previous_rule_path):
                             with open(previous_rule_path, "r") as f:
-                                memory_information += f.read()
+                                previous_rules.append(f.read())
+                    
+                    # only use the latest 3 games
+                    previous_rules = previous_rules[-2:]
+                    memory_information += "\n".join(previous_rules)
 
             return memory_information
 
