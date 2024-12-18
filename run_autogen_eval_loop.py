@@ -11,7 +11,7 @@ import alfworld.agents.modules.generic as generic
 import alfworld.agents.environment as environment
 from gwt_agent import GWTAutogenAgent
 from gwt_agent_rule import GWTRuleAutogenAgent
-from gwt_agent_rule_simplified import GWTRuleSimplifiedAutogenAgent
+from gwt_agent_rule_simplied import GWTRuleSimplifiedAutogenAgent
 from baseline_agent import BaselineAutogenAgent
 import wandb    # Install wandb, use wandb login in cmd, and then run the code
 
