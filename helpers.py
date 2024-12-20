@@ -133,7 +133,10 @@ def get_echo_agent(name, llm_config, additional_termination_criteria=None):
 
     echo_agent = ConversableAgent(
         name=f"{name}",
-        system_message=f"You are {name}, you echo the EXACT contents of the last message you received ONLY IF it begins with the keyword \"ECHO: \".",
+        system_message=f"You are {name}, if the last message you received begins with the keyword \"ECHO: \", then you parrot the contents of the last message you received. Otherwise, do nothing."
+                       f"\nExample:"
+                       f"\n Last message you received: [ECHO: Observation: You arrive at drawer 2. The drawer 2 is closed. Task Status: INCOMPLETE Actions Left: 20 Current Admissible Actions: ['examine drawer 2', 'go to bed 1', 'go to desk 1', 'go to drawer 1', 'go to drawer 3', 'go to drawer 4', 'go to drawer 5', 'go to dresser 1', 'go to garbagecan 1', 'go to laundryhamper 1', 'go to shelf 1', 'help', 'inventory', 'look', 'open drawer 2']]"
+                       f"\n Your output: [Observation: You arrive at drawer 2. The drawer 2 is closed. Task Status: INCOMPLETE Actions Left: 20 Current Admissible Actions: ['examine drawer 2', 'go to bed 1', 'go to desk 1', 'go to drawer 1', 'go to drawer 3', 'go to drawer 4', 'go to drawer 5', 'go to dresser 1', 'go to garbagecan 1', 'go to laundryhamper 1', 'go to shelf 1', 'help', 'inventory', 'look', 'open drawer 2']]",
         llm_config=llm_config,
         human_input_mode="NEVER",
         is_termination_msg=termination_criteria,
