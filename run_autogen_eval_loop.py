@@ -11,7 +11,7 @@ import alfworld.agents.modules.generic as generic
 import alfworld.agents.environment as environment
 from gwt_agent import GWTAutogenAgent
 from baseline_agent import BaselineAutogenAgent
-import wandb    # Install wandb, use wandb login in cmd, and then run the code
+import wandb  # Install wandb, use wandb login in cmd, and then run the code
 
 
 def parse_arguments():
@@ -54,16 +54,18 @@ if __name__ == "__main__":
     with open(args.config_file) as reader:
         config = yaml.safe_load(reader)
 
-    wandb.init(project="cogllm")
+    wandb.init(project="cognitive_agents", entity="eduardocortes1100-university-of-california-berkeley")
 
-    API_KEY = os.environ.get("LAMBDA_API_KEY")
-    BASE_URL = "https://api.lambdalabs.com/v1"
-    MODEL = "llama3.1-70b-instruct-berkeley"
+    API_KEY = os.environ.get("OPENAI_API_KEY")  # os.environ.get("LAMBDA_API_KEY")
+    # BASE_URL = "https://api.lambdalabs.com/v1"
+    MODEL = "gpt-4o-mini"  # "llama3.1-70b-instruct-berkeley"
     llm_config = {
         "timeout": 1000,
         "cache_seed": None,
         "max_tokens": 300,
-        "config_list": [{"model": MODEL, "api_key": API_KEY, "base_url": BASE_URL}]}
+        "config_list": [{"model": MODEL, "api_key": API_KEY}]}  # , "base_url": BASE_URL}]}
+
+    # llm_config = {"config_list": [{"model": "gpt-4o-mini", "api_key": os.environ.get("OPENAI_API_KEY")}]}
 
     eval_paths = config["general"]["evaluate"]["eval_paths"]
     eval_envs = config["general"]["evaluate"]["envs"]
@@ -99,10 +101,11 @@ if __name__ == "__main__":
                     print("Initialized Environment")
 
                     obs, info = env.reset()
-                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, game_no = i, max_actions=35, args=args)
+                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, game_no=i, max_actions=30,
+                                        args=args)
 
                     log_paths = agent.get_log_paths()
-                    
+
                     initial_message_content = ""
                     # find the task description in the observation, save it as a txt file.
                     task_description = obs[0].split("Your task is to: ")[1]
@@ -112,11 +115,12 @@ if __name__ == "__main__":
 
                     initial_message_content += f"Task: {task_description}\n"
 
+                    agent.task = initial_message_content
+
                     with open(log_paths['history_path'], "w") as f:
                         f.write(f"action: 'None'. observation: '{initial_observation}'\n")
 
                     initial_message_content += f"Observation: {initial_observation}\n"
-
 
                     # save the admissible commands into a txt file
                     admissible_commands = list(info['admissible_commands'][0])
