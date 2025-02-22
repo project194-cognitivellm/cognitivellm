@@ -371,3 +371,4 @@ class GWTAutogenAgent(AutogenAgent):
             groupchat=self.group_chat,
             llm_config=self.llm_config,
         )
+
