@@ -51,7 +51,7 @@ class GWTAutogenAgent(AutogenAgent):
                 '''You are Planning_Agent, your job is to optimally solve the current task by formulating and executing an action plan. 
                 You must execute your plan by evaluating all currently admissible actions and proposing one of them. "
                 You will receive feedback, ideas and information to help you improve your plan.
-                Always respond using this format:
+                Output Format = 
                     PLAN: [current step-by-step plan]
                     ACTION: [proposed action]
                 \nExample 1: 
