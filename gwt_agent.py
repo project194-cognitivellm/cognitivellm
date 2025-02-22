@@ -5,7 +5,6 @@ from autogen import ConversableAgent, register_function, GroupChat, GroupChatMan
 from helpers import get_best_candidate, register_function_lambda, is_termination_msg_generic, get_echo_agent
 from autogen_agent import AutogenAgent
 
-
 class GWTAutogenAgent(AutogenAgent):
     def __init__(self, env, obs, info, llm_config, log_path, memory_path, game_no, max_actions=50, args=None):
         super().__init__(env, obs, info, llm_config, log_path, memory_path, game_no, max_actions, args)
@@ -18,7 +17,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.internal_perception_agent_1 = None
         self.internal_perception_agent_2 = None
         self.awareness_agent = None
-        self.update_and_retrieve_working_memory_agent = None
+        self.update_and_retrieve_episodic_memory_agent = None
         self.retrieve_long_term_memory_agent = None
         self.learning_agent = None
         self.record_long_term_memory_agent = None
@@ -29,7 +28,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.game_no = game_no
 
-        self.narrative_state = ""
+        self.episodic_memory = ''
         self.initialize_autogen()
 
     def initialize_agents(self):
@@ -37,7 +36,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.focus_agent = ConversableAgent(
             name="Focus_Agent",
             system_message=(
-                "You are Focus_Agent, you call the focus function with no arguments. "
+                "You call the focus function with no arguments. "
                 "Your output should always be: focus()"
             ),
             llm_config=self.llm_config,
@@ -48,7 +47,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.planning_agent = ConversableAgent(
             name="Planning_Agent",
             system_message=(
-                '''You are Planning_Agent, your job is to optimally solve the current task by formulating and executing an action plan. 
+                '''Your job is to optimally solve the current task by formulating and executing an action plan. 
                 You must execute your plan by evaluating all currently admissible actions and proposing one of them. "
                 You will receive feedback, ideas and information to help you improve your plan.
                 Output Format = 
@@ -71,15 +70,14 @@ class GWTAutogenAgent(AutogenAgent):
             is_termination_msg=lambda msg: False,
             human_input_mode="NEVER"
         )
-
-        # REASON: [A bowl is more likely to appear in desk(1-2), drawer (1-2), shelf (1-3)]
-        # REASON: [Now that I've found a book, I need to take it.]
+        #REASON: [A bowl is more likely to appear in desk(1-2), drawer (1-2), shelf (1-3)]
+        #REASON: [Now that I've found a book, I need to take it.]
         def motor_agent_termination_msg(msg):
             return msg["name"] == "Motor_Agent" and msg["content"] is not None and msg["content"][:5] != "ECHO:"
 
         self.motor_agent = ConversableAgent(
             name="Motor_Agent",
-            system_message='''You are Motor_Agent, you call the execute_action function with the given action as the argument.
+            system_message='''You call the execute_action function with the given action as the argument.
                            If no action is given, then your output = execute_action(\'\')       
                            \nExample: 
                                 If the given action = ACTION [go to desk 1] 
@@ -91,7 +89,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.retrieve_long_term_memory_agent = ConversableAgent(
             name="Retrieve_Long_Term_Memory_Agent",
-            system_message="You are Retrieve_Long_Term_Memory_Agent, you always call the retrieve_long_term_memory function with no arguments. Your output should "
+            system_message="You always call the retrieve_long_term_memory function with no arguments. Your output should "
                            "always be: retrieve_long_term_memory()",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -100,7 +98,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.record_long_term_memory_agent = ConversableAgent(
             name="Record_Long_Term_Memory_Agent",
-            system_message="""You are Record_Long_Term_Memory_Agent. Your sole task is to call the record_long_term_memory function with the given rule as the argument. 
+            system_message="""Your sole task is to call the record_long_term_memory function with the given rule as the argument. 
                     If no rule is given, then your output = record_long_term_memory(\'NO NEW RULES at this time.\')
                     \nExample:
                         If the given rule = Rule Discovered: [You must examine an object before attempting to interact with it.]
@@ -114,9 +112,9 @@ class GWTAutogenAgent(AutogenAgent):
         self.imagination_agent = ConversableAgent(
             name="Imagination_Agent",
             system_message=(
-                "You are Imagination_Agent, you retrieve and integrate all relevant information, including information stored in memory, to construct new ideas, theories, and hypotheses."
+                "You retrieve and integrate all relevant information, including information stored in memory, to construct new ideas, theories, and hypotheses."
                 "You must construct these new ideas through creativity and reasoning, and by building-on previous ideas or even random ideas."
-                "\nExample Output: (After trying to open a drawer multiple times while holding a spoon)"
+                "\nExample Output (After trying to open a drawer multiple times while holding a spoon):"
                 "I noticed we were holding spoon 1 when we tried to open the drawer. Maybe the reason we couldn't open the drawer is because our hands are full. We need to place the spoon 1 somewhere before attempting to open the drawer again."
             ),
             llm_config=self.llm_config,
@@ -127,7 +125,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.awareness_agent = ConversableAgent(
             name="Awareness_Agent",
             system_message=(
-                "You are Awareness_Agent, your role is to integrate all available information from the ongoing conversation and maintain a continuously updated, first-person narrative model of your environment and your actions within it. This narrative should:"
+                "You integrate all available information from the ongoing conversation and maintain a continuously updated, first-person narrative model of your environment and your actions within it. This narrative should:"
                 "1. Include all known details of the environment, along with your own state and any items you have encountered."
                 "2. Accurately reflect events that have transpired so far, updating and correcting as new information arrives."
                 "3. Strive for maximum accuracy. When details are uncertain or missing, infer plausible elements only as a last resort, ensuring consistency and usefulness in the model."
@@ -145,48 +143,30 @@ class GWTAutogenAgent(AutogenAgent):
             is_termination_msg=is_termination_msg_generic,
         )
 
-        self.update_and_retrieve_working_memory_agent = ConversableAgent(
-            name="Update_And_Retrieve_Working_Memory_Agent",
-            system_message='''You are Update_And_Retrieve_Working_Memory_Agent, you call the update_and_retrieve_working_memory function with the given model update as the argument. 
-                           If no model update is given, then your output = update_and_retrieve_working_memory(\'\')
+        self.update_and_retrieve_episodic_memory_agent = ConversableAgent(
+            name="Update_And_Retrieve_Episodic_Memory_Agent",
+            system_message='''You call the update_and_retrieve_episodic_memory function with the given model update as the argument. 
+                           If no model update is given, then your output = update_and_retrieve_episodic_memory(\'\')
                            \nExample: 
                                 If the given model update = Model Update: [I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.]
-                                Then your output = update_and_retrieve_working_memory(\'I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.\')''',
+                                Then your output = update_and_retrieve_episodic_memory(\'I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.\')''',
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
         )
 
-        self.learning_agent = ConversableAgent(
-            name="Learning_Agent",
-            system_message="""You are the Learning Agent, your sole responsibility is to discover and extract generalizable rules about the environment and agent capabilities. You must focus exclusively on patterns related to **what actions are admissible**, **how actions interact with the environment**, and **the conditions required for success.**
-
-            Focus on Capabilities and Environment:
-            - Identify rules that describe the limitations, requirements, or interactions between the agent and the environment.
-            - Rules should be based on how the environment responds to actions or what preconditions are necessary for certain actions to succeed.
-            Rules need to be Generalizable:
-            - Avoid referencing specific items, locations, or overly concrete steps.
-            - Rules must be broadly applicable and reusable in different contexts.
-            Rules need to be Validated:
-            - The history provided may not always be accurate. Extract rules only when confirmed as successful and beneficial for understanding the environment or agent capabilities.
-            Understand Limitations: Identify what actions fail and why (e.g., non-admissible actions, insufficient preconditions).
-            Extract Successful Patterns: Focus on the environmental conditions or agent capabilities that enable success.
-
-            How to Formulate Rules: Summarize findings into one concise, broadly applicable rule that describes how the environment or capabilities operate.
-
-            If no new rule is identified, explicitly state: "NO NEW RULES at this time."
-
-            **Output Format:**
-            Rule Discovered: [new rule]
-
-            **Example:**
-            History: You tried to open a cabinet but failed. After examining it, you succeeded. You attempted to carry three objects simultaneously but failed. After reducing the load to one object, you succeeded.
-
-            Your Output = Rule Discovered: [The agent cannot carry more than one object at a time.]""",
-            llm_config=self.llm_config,
-            human_input_mode="NEVER",
-            is_termination_msg=lambda msg: False
-        )
+        #self.learning_agent = ConversableAgent(
+        #    name="Learning_Agent",
+        #    system_message='''You execute the update_and_retrieve_episodic_memory function and analyze the resulting output in order to discover generalizable knowledge including truths, rules, and patterns that help the other agents operate more rationally.
+        #                      Your output should always be a call to the record_long_term_memory function.
+        #                      If no new knowledge is identified, then your output = record_long_term_memory(\'NO NEW RULES at this time.\')
+        #                      \nExample:
+        #                        After executing the update_and_retrieve_episodic_memory function you noticed that you attempted to carry two objects simultaneously but failed. However, after carrying one object at a time, you succeeded.
+        #                        Your output = record_long_term_memory(\'The agent cannot carry more than one object at a time.\')''',
+        #    llm_config=self.llm_config,
+        #    human_input_mode="NEVER",
+        #    is_termination_msg=lambda msg: False,
+        #)
 
         llm_config = copy.deepcopy(self.llm_config)
         llm_config['max_tokens'] = 1500
@@ -198,14 +178,26 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.short_term_memory_summarizer_agent = ConversableAgent(
             name="Short_Term_Memory_Summarizer_Agent",
-            system_message="You are Short_Term_Memory_Summarizer_Agent, you execute the update_and_retrieve_working_memory function and then summarize the crucial information for solving the task that is within the resulting output.",
+            system_message="You execute the update_and_retrieve_episodic_memory function and then summarize the crucial information for solving the task that is within the resulting output.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
         )
         self.long_term_memory_summarizer_agent = ConversableAgent(
             name="Long_Term_Memory_Summarizer_Agent",
-            system_message="You are Long_Term_Memory_Summarizer_Agent, you execute the retrieve_long_term_memory function and then summarize the crucial information for solving the task that is within the resulting output.",
+            system_message="You execute the retrieve_long_term_memory function and then summarize the crucial information for solving the task that is within the resulting output.",
+            llm_config=self.llm_config,
+            human_input_mode="NEVER",
+            is_termination_msg=lambda msg: False,
+        )
+
+        self.learning_agent = ConversableAgent(
+            name="Learning_Agent",
+            system_message='''You analyze the resulting output in order to discover generalizable knowledge including truths, rules, and patterns that help the other agents operate more rationally.
+                                      If no new rule is identified, explicitly state: "NO NEW RULES at this time."
+                                      \nExample: 
+                                        If within the resulting output you attempted to carry two objects simultaneously and failed, but after carrying one object at a time, you succeeded.
+                                        Then your Output = Rule Discovered: [I cannot carry more than one object at a time.]''',
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -215,14 +207,12 @@ class GWTAutogenAgent(AutogenAgent):
             self.planning_agent: [self.motor_agent],
             self.motor_agent: [self.external_perception_agent],
             self.external_perception_agent: [self.awareness_agent],
-            self.awareness_agent: [self.learning_agent, self.retrieve_long_term_memory_agent, self.planning_agent,
-                                   self.focus_agent, self.update_and_retrieve_working_memory_agent],
-            self.update_and_retrieve_working_memory_agent: [self.short_term_memory_summarizer_agent],
+            self.awareness_agent: [self.retrieve_long_term_memory_agent, self.focus_agent, self.update_and_retrieve_episodic_memory_agent, self.planning_agent],
+            self.update_and_retrieve_episodic_memory_agent: [self.short_term_memory_summarizer_agent, self.learning_agent],
             self.long_term_memory_summarizer_agent: [self.imagination_agent],
             self.short_term_memory_summarizer_agent: [self.imagination_agent],
             self.retrieve_long_term_memory_agent: [self.long_term_memory_summarizer_agent],
-            self.imagination_agent: [self.planning_agent, self.learning_agent, self.retrieve_long_term_memory_agent,
-                                     self.imagination_agent],
+            self.imagination_agent: [self.planning_agent, self.learning_agent, self.retrieve_long_term_memory_agent, self.imagination_agent],
             self.learning_agent: [self.record_long_term_memory_agent],
             self.record_long_term_memory_agent: [self.internal_perception_agent_1],
             self.internal_perception_agent_1: [self.imagination_agent],
@@ -230,24 +220,23 @@ class GWTAutogenAgent(AutogenAgent):
             self.focus_agent: [self.internal_perception_agent_2]
         }
 
-        self.motor_agent.description = (
-            "calls the execute_action function with the proposed action as the argument to perform the suggested action"
-        )
+        self.motor_agent.description = "calls the execute_action function with the proposed action as the argument"
         self.external_perception_agent.description = "executes the given execute_action function call and then parrots the resulting output as feedback."
         self.awareness_agent.description = "integrates all available information from the ongoing conversation and maintains a continuously updated, first-person narrative model of the environment and past actions within it"
-        self.update_and_retrieve_working_memory_agent.description = "calls the update_and_retrieve_working_memory function with the proposed model update as the argument in order to help the other agents remember useful information for solving the current task"
-        self.short_term_memory_summarizer_agent.description = "executes the update_and_retrieve_working_memory function and then summarizes the crucial information for solving the task that is within the resulting output"
-
         self.planning_agent.description = "makes final action decisions to solve the current task"
-        self.imagination_agent.description = "retrieves and integrates all available information from the ongoing conversation and from long-term memory in order to construct new and creative ideas, especially when there is confusion, difficulty, or repetitive and ineffective actions."
+
+        self.update_and_retrieve_episodic_memory_agent.description = "helps the other agents process and recall useful information for solving the current task"
+        self.short_term_memory_summarizer_agent.description = "executes the update_and_retrieve_episodic_memory function and then summarizes the crucial information for solving the task that is within the resulting output"
+
+        self.imagination_agent.description = "retrieves and integrates all available information from the ongoing conversation and from long-term memory in order to construct new ideas from previous ideas"
+
+        self.learning_agent.description = "helps the other agents learn generalizable knowledge in order to solve the current task and future tasks"
+        self.record_long_term_memory_agent.description = "calls the record_long_term_memory function with the given rule as the argument"
+        self.retrieve_long_term_memory_agent.description = "helps the other agents recall useful knowledge for solving the current task"
+        self.long_term_memory_summarizer_agent.description = "executes the retrieve_long_term_memory function and then summarizes the crucial information for solving the task that is within the resulting output"
         self.internal_perception_agent_1.description = "executes the record_long_term_memory function and then parrots the resulting output"
 
-        self.learning_agent.description = "learns generalizable knowledge in order to help the other agents solve the current task and future tasks"
-        self.record_long_term_memory_agent.description = "calls the record_long_term_memory function with the given rule as the argument"
-        self.retrieve_long_term_memory_agent.description = "calls the retrieve_long_term_memory function with no arguments in order to help the other agents remember useful knowledge for solving the current task"
-        self.long_term_memory_summarizer_agent.description = "executes the retrieve_long_term_memory function and then summarizes the crucial information for solving the task that is within the resulting output"
-
-        self.focus_agent.description = "calls the focus function with no arguments in order to help the other agents focus on solving the task"
+        self.focus_agent.description = "helps the other agents focus on solving the task"
         self.internal_perception_agent_2.description = "executes the focus function and then parrots the resulting output"
 
         self.start_agent = self.external_perception_agent
@@ -269,7 +258,8 @@ class GWTAutogenAgent(AutogenAgent):
                 self.obs, scores, dones, self.info = self.env.step([action])
                 self.success = dones[0]
 
-            self.narrative_state += f"Step {self.num_actions}: " + self.obs[0] + "\n\n"
+
+            self.episodic_memory += f"Step {self.num_actions}: " + self.obs[0] + "\n\n"
 
             # time.sleep(1)
             if self.success:
@@ -282,7 +272,7 @@ class GWTAutogenAgent(AutogenAgent):
         # Define record_memory function
         def record_long_term_memory(rule: str) -> str:
             if rule == "NO NEW RULES at this time.":
-                return "No Rule Recorded"
+                return "NO NEW RULES at this time."
 
             with open(self.log_paths['rule_path'], 'a+') as f:
                 f.write(f"- {rule}\n")
@@ -295,31 +285,31 @@ class GWTAutogenAgent(AutogenAgent):
         # Define retrieve_memory function, return all the content in the memory.txt file
         def retrieve_long_term_memory() -> str:
             memory_information = ""
-            # previous_rules = []
+            #previous_rules = []
 
             if os.path.exists(self.log_paths['memory_path']):
                 with open(self.log_paths['memory_path'], "r") as f:
                     memory_information = f.read()
 
-            # if os.path.exists(self.log_paths['rule_path']):
+            #if os.path.exists(self.log_paths['rule_path']):
             #    memory_information += "\nRules: "
             #    with open(self.log_paths['rule_path'], "r") as f:
             #        memory_information += f.read()
 
-            # if len(self.log_paths['previous_rule_path']) > 0:
+            #if len(self.log_paths['previous_rule_path']) > 0:
             #    memory_information += "\nPrevious Rules: \n"
             #    for previous_rule_path in self.log_paths['previous_rule_path']:
             #        if os.path.exists(previous_rule_path):
             #            with open(previous_rule_path, "r") as f:
             #                previous_rules.append(f.read())
 
-            # memory_information += "\n".join(previous_rules)
+            #memory_information += "\n".join(previous_rules)
             print("long_term_memory:\n", memory_information)
             return memory_information
 
-        def update_and_retrieve_working_memory(new_info: str) -> str:
-            self.narrative_state += f"Step {self.num_actions}: " + new_info + "\n\n"
-            return self.narrative_state
+        def update_and_retrieve_episodic_memory(new_info: str) -> str:
+            self.episodic_memory += f"Step {self.num_actions}: " + new_info + "\n\n"
+            return self.episodic_memory
 
         def focus() -> str:
             return f"{self.task}\nLast Observation: {self.obs[0]}\nTask Status: INCOMPLETE\nActions Left: {self.max_actions - self.num_actions}\nCurrent Admissible Actions: {list(self.info['admissible_commands'][0])}"
@@ -328,15 +318,16 @@ class GWTAutogenAgent(AutogenAgent):
             {r"execute_action": execute_action},
             [self.external_perception_agent]
         )
-
+        #short-term -> long-term
+        #
         register_function_lambda(
             {r"record_long_term_memory": record_long_term_memory},
             [self.internal_perception_agent_1]
         )
 
         register_function_lambda(
-            {r"update_and_retrieve_working_memory": update_and_retrieve_working_memory},
-            [self.short_term_memory_summarizer_agent]
+            {r"update_and_retrieve_episodic_memory": update_and_retrieve_episodic_memory},
+            [self.short_term_memory_summarizer_agent, self.learning_agent]
         )
 
         register_function_lambda(
@@ -345,7 +336,7 @@ class GWTAutogenAgent(AutogenAgent):
         )
 
         register_function_lambda(
-            {r"focus": focus}, [self.internal_perception_agent_2]
+                {r"focus": focus},[self.internal_perception_agent_2]
         )
 
     def initialize_groupchat(self, max_chat_round=200):
@@ -359,7 +350,7 @@ class GWTAutogenAgent(AutogenAgent):
                 self.internal_perception_agent_1,
                 self.internal_perception_agent_2,
                 self.awareness_agent,
-                self.update_and_retrieve_working_memory_agent,
+                self.update_and_retrieve_episodic_memory_agent,
                 self.retrieve_long_term_memory_agent,
                 self.learning_agent,
                 self.record_long_term_memory_agent,
