@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 import pickle
 import yaml
 
@@ -11,7 +12,7 @@ import alfworld.agents.modules.generic as generic
 import alfworld.agents.environment as environment
 from gwt_agent import GWTAutogenAgent
 from baseline_agent import BaselineAutogenAgent
-import wandb  # Install wandb, use wandb login in cmd, and then run the code
+import wandb    # Install wandb, use wandb login in cmd, and then run the code
 
 
 def parse_arguments():
@@ -56,16 +57,16 @@ if __name__ == "__main__":
 
     wandb.init(project="cognitive_agents", entity="eduardocortes1100-university-of-california-berkeley")
 
-    API_KEY = os.environ.get("OPENAI_API_KEY")  # os.environ.get("LAMBDA_API_KEY")
+    API_KEY = os.environ.get("OPENAI_API_KEY") #os.environ.get("LAMBDA_API_KEY")
     # BASE_URL = "https://api.lambdalabs.com/v1"
-    MODEL = "gpt-4o-mini"  # "llama3.1-70b-instruct-berkeley"
+    MODEL = "gpt-4o-mini" #"llama3.1-70b-instruct-berkeley"
     llm_config = {
-        "timeout": 1000,
+       "timeout": 1000,
         "cache_seed": None,
         "max_tokens": 300,
-        "config_list": [{"model": MODEL, "api_key": API_KEY}]}  # , "base_url": BASE_URL}]}
+        "config_list": [{"model": MODEL, "api_key": API_KEY}]}#, "base_url": BASE_URL}]}
 
-    # llm_config = {"config_list": [{"model": "gpt-4o-mini", "api_key": os.environ.get("OPENAI_API_KEY")}]}
+    #llm_config = {"config_list": [{"model": "gpt-4o-mini", "api_key": os.environ.get("OPENAI_API_KEY")}]}
 
     eval_paths = config["general"]["evaluate"]["eval_paths"]
     eval_envs = config["general"]["evaluate"]["envs"]
@@ -78,9 +79,12 @@ if __name__ == "__main__":
     base_path = os.path.join(base_path, timestamp)
     os.makedirs(base_path, exist_ok=True)
 
+    memory_path = "memory"
+    os.makedirs(memory_path, exist_ok=True)
+    memory_path = os.path.join(memory_path, "memory1.txt")
+
     result_list_path = os.path.join(base_path, "result_list.txt")
     chat_round_list = []
-
     for eval_env_type in eval_envs:
         for controller_type in (controllers if eval_env_type == "AlfredThorEnv" else ["tw"]):
             for eval_path in eval_paths:
@@ -96,13 +100,13 @@ if __name__ == "__main__":
                 ## For each set, there are `num_games` games we need to evaluate
                 num_games = alfred_env.num_games
                 success_list = []
+                error_list = []
 
                 for i in range(num_games):
                     print("Initialized Environment")
 
                     obs, info = env.reset()
-                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, game_no=i, max_actions=30,
-                                        args=args)
+                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, memory_path=memory_path, game_no = i, max_actions=30, args=args)
 
                     log_paths = agent.get_log_paths()
 
@@ -121,6 +125,7 @@ if __name__ == "__main__":
                         f.write(f"action: 'None'. observation: '{initial_observation}'\n")
 
                     initial_message_content += f"Observation: {initial_observation}\n"
+
 
                     # save the admissible commands into a txt file
                     admissible_commands = list(info['admissible_commands'][0])
@@ -141,6 +146,7 @@ if __name__ == "__main__":
                         error_message = e
 
                     if error_message is not None:
+                        error_list.append(i + 1)
                         with open(log_paths['error_message_path'], "a") as f:
                             f.write(f"Run Chat: {error_message}\n")
 
@@ -180,6 +186,11 @@ if __name__ == "__main__":
                     success = agent.success
                     print(f'Success: {success}')
                     success_list.append(success)
+                    print(f"Game: {i + 1}/{num_games}")
+                    print(f"Current Success Rate: {np.sum(success_list)}/{i + 1}")
+                    print(f"Current Adjusted Success Rate: {np.sum(success_list)}/{i - len(error_list) + 1}")
+                    print(f"Current Failure List: {[index + 1 for index, value in enumerate(success_list) if not value]}")
+                    print(f"Current Error List: {error_list}\n")
 
                     wandb.log({"success": success, "success_rate": np.sum(success_list) / len(success_list)})
 
@@ -193,6 +204,6 @@ if __name__ == "__main__":
                         f.write(f"Success List: {success_list}\n")
                         f.write(f"Chat Round List: {chat_round_list}\n")
 
-                print(f"Success Rate: {np.sum(success_list)}/{num_games}")
-
+                print(f"Success Rate: {np.sum(success_list)}/{num_games} = {np.sum(success_list) / num_games}")
+                print(f"Adjusted Success Rate: {np.sum(success_list)}/{num_games - len(error_list)} = {np.sum(success_list) / (num_games - len(error_list))}")
 wandb.finish()

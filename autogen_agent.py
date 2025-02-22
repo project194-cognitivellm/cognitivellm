@@ -3,12 +3,13 @@ import os
 
 # This is a template class for the Autogen Agent
 class AutogenAgent:
-    def __init__(self, env, obs, info, llm_config, log_path, game_no, max_actions=50, args=None):
+    def __init__(self, env, obs, info, llm_config, log_path, memory_path, game_no, max_actions=50, args=None):
         self.env = env
         self.obs = obs
         self.info = info
         self.llm_config = llm_config
         self.log_path = log_path
+        self.memory_path = memory_path
         self.game_no = game_no
         self.num_actions = 0
         self.max_actions = max_actions
@@ -20,16 +21,12 @@ class AutogenAgent:
         self.group_chat = None
         self.group_chat_manager = None
 
-
-        
     def initialize_autogen(self):
         self.register_log_paths()
         self.initialize_agents()
         self.register_functions()
         self.initialize_groupchat()
-    
-    
-    
+
     def initialize_agents(self):
         raise NotImplementedError
 
@@ -85,33 +82,34 @@ class AutogenAgent:
             self.game_no += 1
 
     def register_log_paths(self):
-        
+
         game_path = os.path.join(self.log_path, f"game_{self.game_no}")
         os.makedirs(game_path, exist_ok=True)
 
         task_path = os.path.join(game_path, "task.txt")
         history_path = os.path.join(game_path, "history.txt")
-        guidance_path = os.path.join(game_path, "guidance.txt")
+        rule_path = os.path.join(game_path, "rules.txt")
         admissible_commands_path = os.path.join(game_path, "admissible_commands.txt")
         chat_history_path = os.path.join(game_path, "chat_history.txt")
         message_path = os.path.join(game_path, "last_message.pkl")
         result_path = os.path.join(game_path, "result.txt")
         error_message_path = os.path.join(game_path, "error_message.txt")
-        
+
         # get all the previous game path
         previous_game_path = [os.path.join(self.log_path, f"game_{i}") for i in range(self.game_no)]
-        previous_guidance_path = [os.path.join(game_path, "guidance.txt") for game_path in previous_game_path]
+        previous_rule_path = [os.path.join(game_path, "rules.txt") for game_path in previous_game_path]
 
         self.log_paths = {
             "task_path": task_path,
             "history_path": history_path,
-            "guidance_path": guidance_path,
+            "rule_path": rule_path,
             "admissible_commands_path": admissible_commands_path,
             "chat_history_path": chat_history_path,
             "message_path": message_path,
             "result_path": result_path,
             "error_message_path": error_message_path,
-            "previous_guidance_path": previous_guidance_path
+            "previous_rule_path": previous_rule_path,
+            "memory_path": self.memory_path
         }
 
     def get_log_paths(self):
