@@ -182,7 +182,7 @@ class GWTAutogenAgent(AutogenAgent):
             name="Learning_Agent",
             system_message='''You execute the update_and_retrieve_episodic_memory function and analyze the resulting output in order to formulate generalizable knowledge such as truths, rules, and patterns which can help the other agents operate more rationally.
                               Knowledge discovered should be as general as possible, and it should not reference any task specific details such as goals, items, or events.
-                              If no new knowledge is identified, explicitly state: "NO NEW KNOWLEDGE at this time."
+                              If no generalizable knowledge is identified, explicitly state: "NO NEW KNOWLEDGE at this time."
                               \nExample: 
                                     If within the resulting output you attempted to carry two objects simultaneously and failed, but after carrying one object at a time, you succeeded.
                                     Then, your output = Knowledge Discovered: [I cannot carry more than one object at a time.]''',
@@ -208,7 +208,7 @@ class GWTAutogenAgent(AutogenAgent):
             self.planning_agent: [self.motor_agent],
             self.motor_agent: [self.external_perception_agent],
             self.external_perception_agent: [self.conscious_agent],
-            self.conscious_agent: [self.update_and_retrieve_episodic_memory_agent, self.retrieve_long_term_memory_agent, self.planning_agent],
+            self.conscious_agent: [self.update_and_retrieve_episodic_memory_agent, self.retrieve_long_term_memory_agent, self.planning_agent, self.focus_agent],
             self.update_and_retrieve_episodic_memory_agent: [self.short_term_memory_summarizer_agent, self.learning_agent],
             self.long_term_memory_summarizer_agent: [self.conscious_agent],
             self.short_term_memory_summarizer_agent: [self.imagination_agent],
@@ -371,4 +371,3 @@ class GWTAutogenAgent(AutogenAgent):
             groupchat=self.group_chat,
             llm_config=self.llm_config,
         )
-
