@@ -57,8 +57,13 @@ if __name__ == "__main__":
 
     wandb.init(project="cognitive_agents", entity="eduardocortes1100-university-of-california-berkeley")
 
-    API_KEY = os.environ.get("OPENAI_API_KEY") #os.environ.get("LAMBDA_API_KEY")
+    API_KEY = os.environ.get("OPENAI_API_KEY")
+
+    # API_KEY = os.environ.get("LAMBDA_API_KEY")
     # BASE_URL = "https://api.lambdalabs.com/v1"
+
+    # API_KEY = os.environ.get("LLAMA_API_KEY")
+
     MODEL = "gpt-4o-mini" #"llama3.1-70b-instruct-berkeley"
     llm_config = {
        "timeout": 1000,
@@ -81,7 +86,7 @@ if __name__ == "__main__":
 
     memory_path = "memory"
     os.makedirs(memory_path, exist_ok=True)
-    memory_path = os.path.join(memory_path, "memory1.txt")
+    memory_path = os.path.join(memory_path, "memory2.txt")
 
     result_list_path = os.path.join(base_path, "result_list.txt")
     chat_round_list = []
@@ -106,7 +111,7 @@ if __name__ == "__main__":
                     print("Initialized Environment")
 
                     obs, info = env.reset()
-                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, memory_path=memory_path, game_no = i, max_actions=30, args=args)
+                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, memory_path=memory_path, game_no = i, max_actions=100, args=args)
 
                     log_paths = agent.get_log_paths()
 
@@ -117,9 +122,9 @@ if __name__ == "__main__":
                     with open(log_paths['task_path'], "w") as f:
                         f.write(f"Task: {task_description}\n")
 
-                    initial_message_content += f"Task: {task_description}\n"
+                    initial_message_content += f"Task = [{task_description}]\n"
 
-                    agent.task = initial_message_content
+                    agent.task = f"Task = [{task_description}]"
 
                     with open(log_paths['history_path'], "w") as f:
                         f.write(f"action: 'None'. observation: '{initial_observation}'\n")
@@ -183,14 +188,16 @@ if __name__ == "__main__":
                     else:
                         chat_round_list.append(-1)
 
-                    success = agent.success
-                    print(f'Success: {success}')
-                    success_list.append(success)
                     print(f"Game: {i + 1}/{num_games}")
+                    success = agent.success
+                    success_list.append(success)
+                    print(f'Success: {success}')
                     print(f"Current Success Rate: {np.sum(success_list)}/{i + 1}")
-                    print(f"Current Adjusted Success Rate: {np.sum(success_list)}/{i - len(error_list) + 1}")
-                    print(f"Current Failure List: {[index + 1 for index, value in enumerate(success_list) if not value]}")
-                    print(f"Current Error List: {error_list}\n")
+                    print(f"Current Error List: {error_list}")
+                    failure_list = [index + 1 for index, value in enumerate(success_list) if (not value) and (index + 1) not in error_list]
+                    print(f"Current Potential Failure List: {failure_list}")
+                    print(f"Current Success List: {[index + 1 for index, value in enumerate(success_list) if value]}")
+                    print(f"Current Adjusted Success Rate: {np.sum(success_list)}/{i - len(error_list) + 1}\n\n")
 
                     wandb.log({"success": success, "success_rate": np.sum(success_list) / len(success_list)})
 

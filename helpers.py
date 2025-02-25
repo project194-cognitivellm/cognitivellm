@@ -120,8 +120,7 @@ def get_best_candidate(reference_sentence, candidate_sentences):
 
 
 def is_termination_msg_generic(msg):
-    return any(keyword in (msg.get("content") or "") for keyword in ["FAILURE", "SUCCESS"])
-
+    return any(keyword in (msg.get("content") or "") for keyword in ["FLEECE", "STRAWBERRY"])
 
 def get_echo_agent(name, llm_config, additional_termination_criteria=None):
     if additional_termination_criteria is None:
