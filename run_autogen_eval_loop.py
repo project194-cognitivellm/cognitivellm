@@ -57,21 +57,23 @@ if __name__ == "__main__":
 
     wandb.init(project="cognitive_agents", entity="eduardocortes1100-university-of-california-berkeley")
 
-    API_KEY = os.environ.get("OPENAI_API_KEY")
+    # API_KEY = os.environ.get("OPENAI_API_KEY")
 
     # API_KEY = os.environ.get("LAMBDA_API_KEY")
     # BASE_URL = "https://api.lambdalabs.com/v1"
 
-    # API_KEY = os.environ.get("LLAMA_API_KEY")
+    API_KEY = os.environ.get("BLOCK_KEY") #LA-d1cb298ec5a440a99a40c6e3026b91481a297f2a9db64305abd3ce8a21a9e34b #8b5a180f-e375-4839-8a4f-0e7adddcaaca
 
-    MODEL = "gpt-4o-mini" #"llama3.1-70b-instruct-berkeley"
-    llm_config = {
-       "timeout": 1000,
-        "cache_seed": None,
-        "max_tokens": 300,
-        "config_list": [{"model": MODEL, "api_key": API_KEY}]}#, "base_url": BASE_URL}]}
+    #BASE_URL = "https://api.llama-api.com/"
 
-    #llm_config = {"config_list": [{"model": "gpt-4o-mini", "api_key": os.environ.get("OPENAI_API_KEY")}]}
+    #MODEL = "llama3.1-70b" #"gpt-4o-mini" #"llama3.1-70b-instruct-berkeley"
+    #llm_config = {
+    #   "timeout": 1000,
+    #    "cache_seed": None,
+    #    "max_tokens": 500,
+    #    "config_list": [{"model": MODEL, "api_key": API_KEY, "base_url": BASE_URL}]}
+
+    llm_config = {"config_list": [{"model": "gpt-4o", "api_key": API_KEY}]}
 
     eval_paths = config["general"]["evaluate"]["eval_paths"]
     eval_envs = config["general"]["evaluate"]["envs"]
@@ -86,7 +88,8 @@ if __name__ == "__main__":
 
     memory_path = "memory"
     os.makedirs(memory_path, exist_ok=True)
-    memory_path = os.path.join(memory_path, "memory2.txt")
+    memory_path1 = os.path.join(memory_path, "memory1.txt")
+    memory_path2 = os.path.join(memory_path, "memory2.txt")
 
     result_list_path = os.path.join(base_path, "result_list.txt")
     chat_round_list = []
@@ -111,7 +114,7 @@ if __name__ == "__main__":
                     print("Initialized Environment")
 
                     obs, info = env.reset()
-                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, memory_path=memory_path, game_no = i, max_actions=100, args=args)
+                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, memory_path1=memory_path1, memory_path2=memory_path2, game_no = i, max_actions=50, args=args)
 
                     log_paths = agent.get_log_paths()
 
