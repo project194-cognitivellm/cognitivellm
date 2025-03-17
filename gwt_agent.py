@@ -10,15 +10,13 @@ import numpy as np
 
 
 class GWTAutogenAgent(AutogenAgent):
-    def __init__(self, env, obs, info, llm_config, log_path, memory_path1, memory_path2, game_no, max_actions=30, k=15,
+    def __init__(self, env, obs, info, llm_config, log_path, memory_path1, memory_path2, game_no, max_actions=30,
                  args=None):
         super().__init__(env, obs, info, llm_config, log_path, memory_path1, memory_path2, game_no, max_actions, args)
 
-        self.k = k
-        self.allowed_transitions = None
         self.planning_agent = None
         self.motor_agent = None
-        self.imagination_agent = None
+        self.idea_agent = None
         self.external_perception_agent = None
         self.internal_perception_agent_1 = None
         self.internal_perception_agent_2 = None
@@ -30,23 +28,23 @@ class GWTAutogenAgent(AutogenAgent):
         self.memory_summarizer_agent = None
         self.associative_memory_extractor_agent = None
         self.focus_agent = None
+
+        self.k = 0
+        self.allowed_transitions = None
         self.task = ''
-
         self.game_no = game_no
-
         self.episodic_memory = ''
         self.initialize_autogen()
         self.get_summary_rules()
+        self.task_failed = False
+        self.task_success = False
+        self.percept = f"Observation: {self.obs[0]}\nTask Status: INCOMPLETE\nActions Left: {self.max_actions - self.num_actions}\nCurrent Admissible Actions: {list(self.info['admissible_commands'][0])}"
 
     def initialize_agents(self):
 
         self.focus_agent = ConversableAgent(
             name="Focus_Agent",
-            system_message=(
-                "You always call the focus function with no arguments. "
-                "Your output should always = focus()"
-                # "Under no circumstances should your output be anything other than: focus()"
-            ),
+            system_message='''You must call the 'focus' function with no arguments.''',
             llm_config=self.llm_config,
             is_termination_msg=lambda msg: False,
             human_input_mode="NEVER"
@@ -54,43 +52,37 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.planning_agent = ConversableAgent(
             name="Planning_Agent",
-            system_message=(
-                f'''Your job is to optimally solve the current task, {self.task}, by formulating and executing an action plan. 
-                You must execute your plan by evaluating all currently admissible actions and proposing one of them. 
-                You will receive feedback, ideas and partial information to help you improve your plan.
-                Your plan must balance exploration and exploitation.
-                Your output should only consist of a proposed action and nothing else. 
-                Output Format = 
-                    ACTION: [proposed action]
-                \nExample 1: 
-                    Information = [You are in the middle of a room. Looking quickly around you, you see a bed 1,
-                     a desk 2, a desk 1, a safe 1, a drawer 2, a drawer 1, a shelf 3, a shelf 2, and a shelf 1. 
-                    Your task is to: look at a book under the desklamp.]
-                    Your Output =
-                        ACTION: [go to desk 1]
-                \nExample 2 (After example 1, you've found the desklamp at desk 1, then went to desk 2.): 
-                    Feedback = [on the desk 2, you see a book 1, and a cd 3] 
-                    Your Output =
-                        ACTION: [take book 1]'''
+            system_message=f'''You must optimally solve the current task by formulating and executing an action plan. 
+            You must formulate and execute your plan by evaluating the currently admissible actions, and proposing one of them. 
+            You will receive information to help you improve your plan and propose better actions.
+            Your plan must balance exploration and exploitation.
+            However, if you are having trouble proposing an action, then you must propose ACTION: [do nothing].
 
-            ),
+            Your strict output format = ACTION: [proposed action]
+
+            Example 1 (Information = [You are in the middle of a room. Looking quickly around you, you see a bed 1, a desk 2, a desk 1, a safe 1, a drawer 2, a drawer 1, a shelf 3, a shelf 2, and a shelf 1. Your task is to: look at a book under the desklamp.]):
+                Your output = ACTION: [go to desk 1]
+
+            Example 2 (After example 1, you've found desklamp 1 at desk 1, then went to desk 2. Information = [on the desk 2, you see a book 1, and a cd 3]):  
+                Your output = ACTION: [take book 1 from desk 2]
+
+            Example 3 (If you are having trouble proposing an action):
+                Your output = ACTION: [do nothing]''',
             llm_config=self.llm_config,
             is_termination_msg=lambda msg: False,
             human_input_mode="NEVER"
         )
 
-        # REASON: [A bowl is more likely to appear in desk(1-2), drawer (1-2), shelf (1-3)]
-        # REASON: [Now that I've found a book, I need to take it.]
-        def motor_agent_termination_msg(msg):
-            return msg["name"] == "Motor_Agent" and msg["content"] is not None and msg["content"][:5] != "ECHO:"
-
         self.motor_agent = ConversableAgent(
             name="Motor_Agent",
-            system_message='''You call the execute_action function with the proposed action given by Planning_Agent as the argument.
-                           If no action is given, then your output = execute_action(\'\')       
-                           \nExample: 
-                                If the given action = ACTION [go to desk 1] 
-                                Then your output = execute_action(\'go to desk 1\')''',
+            system_message='''You must call the 'execute_action' function with the proposed action provided from 'Planning_Agent' as the argument.
+            However, if no suitable action is provided, then you must call the 'execute_action' function with no arguments.
+
+            Example 1 (If the provided action = ACTION [go to desk 1]):
+                Your output = execute_action(\'go to desk 1\')
+
+            Example 2 (If no suitable action is provided):
+                Your output = execute_action(\'\')''',
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -98,7 +90,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.retrieve_long_term_memory_agent = ConversableAgent(
             name="Retrieve_Long_Term_Memory_Agent",
-            system_message="You always call the retrieve_long_term_memory function with no arguments. Your output should always be: retrieve_long_term_memory()",
+            system_message="You must call the retrieve_long_term_memory function with no arguments.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -107,16 +99,19 @@ class GWTAutogenAgent(AutogenAgent):
         llm_config = copy.deepcopy(self.llm_config)
         llm_config['max_tokens'] = 1500
 
-        self.imagination_agent = ConversableAgent(
-            name="Imagination_Agent",
-            system_message=(
-                '''You integrate all available information in order to construct new ideas such as new strategies, theories and hypotheses for Planning_Agent to try.
-                You must construct these new ideas through spontaneous creativity and deep reasoning step-by-step in a chain of thought style.
-                Output format = [IDEA TYPE]: [Idea contents and reasoning behind idea].
+        self.idea_agent = ConversableAgent(
+            name="Idea_Agent",
+            system_message='''You must integrate all available information in order to construct new ideas such as new strategies, theories and hypotheses for Planning_Agent to try.
+            You must construct these new ideas through spontaneous creativity and reasoning step-by-step in a chain of thought style.
+            However, if you are having trouble formulating a useful idea, then you must explicitly state: NO NEW IDEAS AT THIS TIME.
 
-                Example (After failing to open a drawer multiple times while holding a spoon):
-                    HYPOTHESIS: I noticed you were holding spoon 1 when you tried to open the drawer, maybe the reason you couldn't open the drawer is because your hands are full? You should try to place the spoon 1 somewhere before attempting to open the drawer again.'''
-            ),
+            Your suggested output format = [IDEA TYPE]: [Idea contents and reasoning behind idea]
+
+            Example 1 (Context: After Planning_Agent has failed to open a drawer multiple times while holding a spoon):
+                Your suggested output = HYPOTHESIS: I noticed you were holding spoon 1 when you tried to open the drawer, maybe the reason you couldn't open the drawer is because your hands are full? You should try to place the spoon 1 somewhere before attempting to open the drawer again.
+
+            Example 2 (If you are having trouble formulating a useful idea):
+                Your output must = NO NEW IDEAS AT THIS TIME.''',
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -124,65 +119,53 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.conscious_agent = ConversableAgent(
             name="Conscious_Agent",
-            system_message=(
-                '''You integrate all possible information from the ongoing conversation in order to formulate a world model update. Your world model should be a continuously updated, first-person narrative model of your environment and your actions within it. This narrative should:
+            system_message='''You must integrate all possible information to formulate a world model update. Your world model update must be a first-person narrative model of your environment and your actions within it. 
+            Your world model update must:
                 1. Include all known details of the environment, along with your own state and any items you have encountered.
                 2. Accurately reflect events that have transpired so far, updating and correcting as new information arrives.
                 3. Strive for maximum accuracy. When details are uncertain or missing, infer plausible elements only as a last resort, ensuring consistency and usefulness in the model.
+            However, if you are having trouble formulating a world model update, then your world model update must be Model Update: [I am confused]
 
-                If you discover an error in your previous understanding, revise the model immediately to incorporate the correct information.
-                You will create this narrative one model update at a time.
-                Your narrative model updates should NOT include any reasoning or suggestions on how to solve the task, they must simply describe your environment and your past actions within it.
+            Your strict output format = Model Update: [First-person narrative integrating environment, tasks, discoveries, attempts, successes, failures, hypotheses, and current decision-making state]
 
-                Your output must always strictly follow this pattern only:
-                Model Update: [First-person narrative integrating environment, tasks, discoveries, attempts, successes, failures, hypotheses, and current decision-making state]
+            IMPORTANT: It is necessary that you formulate and output a world model update under all circumstances; You are not allowed not to respond. Therefore, do whatever is necessary to ensure you respond.
 
-                Example 1:
-                    Model Update: I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and 
-                    attempted to put it into drawer 1, but I was unable to open that drawer. Then, I realized I couldn't open the drawer because my hands were full. Then, I placed spoon 1 on countertop 1. Then, I opened drawer 1.'''
-            ),
+            Example 1 (Simple example of a world model update):
+                Your output = Model Update: [I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. Then, I realized I couldn't open the drawer because my hands were full. Then, I placed spoon 1 on countertop 1. Then, I opened drawer 1.]
+
+            Example 2 (If you are unable to formulate a world model update):
+                Your output = Model Update [I am confused]''',
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=is_termination_msg_generic,
         )
 
         self.update_and_retrieve_memory_agent = ConversableAgent(
-            name="update_and_retrieve_memory_agent",
-            system_message='''You always call the update_and_retrieve_memory function with the given model update as the argument. 
-                           If no model update is given, then your output = update_and_retrieve_memory(\'\')
-                           \nExample 1: 
-                                If the given model update = Model Update: [I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.]
-                                Then your output = update_and_retrieve_memory(\'I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.\')''',
+            name="Update_And_Retrieve_Memory_Agent",
+            system_message='''You must call the 'update_and_retrieve_memory' function with the provided model update as the argument.
+            However, if no suitable model update is provided, then you must call the 'update_and_retrieve_memory' function with no arguments.
+
+            Your strict output format = update_and_retrieve_memory(\'[provided model update]\')
+
+            IMPORTANT: It is necessary that you formulate and output a call to the 'update_and_retrieve_memory' function under all circumstances; You are not allowed not to respond. Therefore, do whatever is necessary to ensure you respond.
+
+            Example 1 (If the provided model update = Model Update: [I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.]):
+                Your output = update_and_retrieve_memory(\'I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.\')
+
+            Example 2 (If you are not provided a suitable model update):
+                Your output = update_and_retrieve_memory(\'\')''',
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
         )
 
-        # self.learning_agent = ConversableAgent(
-        #    name="Learning_Agent",
-        #    system_message='''You execute the update_and_retrieve_memory function and analyze the resulting output in order to discover generalizable knowledge such as general truths, rules, and patterns about reality that help the other agents operate more rationally.
-        #                      Your output should always be a call to the record_long_term_memory function.
-        #                      If no new knowledge is identified, then your output = record_long_term_memory(\'NO NEW RULES at this time.\')
-        #                      \nExample:
-        #                        After executing the update_and_retrieve_memory function you noticed that you attempted to carry two objects simultaneously but failed. However, after carrying one object at a time, you succeeded.
-        #                        Your output = record_long_term_memory(\'The agent cannot carry more than one object at a time.\')''',
-        #    llm_config=self.llm_config,
-        #    human_input_mode="NEVER",
-        #    is_termination_msg=lambda msg: False,
-        # )
-
-        # self.external_perception_agent = get_echo_agent("External_Perception_Agent", llm_config)
-
         self.external_perception_agent = ConversableAgent(
             name="External_Perception_Agent",
-            # system_message="You execute the execute_action function and then parrot the resulting output.",
             llm_config=None,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
         )
 
-        # self.internal_perception_agent_1 = get_echo_agent("Internal_Perception_Agent_1", llm_config)
-        # self.internal_perception_agent_2 = get_echo_agent('Internal_Perception_Agent_2', llm_config)
         self.internal_perception_agent_1 = ConversableAgent(
             name="Internal_Perception_Agent_1",
             llm_config=None,
@@ -199,7 +182,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.memory_summarizer_agent = ConversableAgent(
             name="Memory_Summarizer_Agent",
-            system_message="You execute the update_and_retrieve_memory function and then summarize the crucial information for solving the task that is within the resulting output.",
+            system_message="You must execute the 'update_and_retrieve_memory' function and then summarize the important information that is within the resulting output.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -207,13 +190,14 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.associative_memory_extractor_agent = ConversableAgent(
             name="Associative_Memory_Extractor_Agent",
-            system_message='''You execute the retrieve_long_term_memory function and then extract the single most relevant memory, to the given model update, that is within the resulting output.
-                            Your output must follow the following FORMAT. FORMAT =  Model Update: I remembered that [most relevant memory].
+            system_message='''You must execute the 'retrieve_long_term_memory' function and then extract the single most relevant memory (to the given model update) that is within the resulting output.
+            Your output must follow the following FORMAT. FORMAT =  Model Update: I just remembered that [most relevant memory].
 
-                            If there is nothing relevant to remember, then your output = Model Update: I attempted to remember something.
-                            Example (The fact that spoons are most likely to be found on countertops is within the resulting output):
-                                The given model update = Model Update: I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer.
-                                Your output = Model Update: I remembered that spoons are most likely to be found on countertops''',
+            If there is nothing relevant to remember, then your output = Model Update: I attempted to remember something, but I couldn't remember anything useful.
+
+            Example (The fact that spoons are most likely to be found on countertops is within the resulting output):
+                The given model update = Model Update: I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer.
+                Your output = Model Update: I just remembered that spoons are most likely to be found on countertops''',
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -221,15 +205,21 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.learning_agent = ConversableAgent(
             name="Learning_Agent",
-            system_message='''You execute the update_and_retrieve_memory function and analyze the resulting output in order to formulate generalizable knowledge about reality such as general truths, rules, and patterns that can help one operate more rationally within the environment.
-                              Knowledge discovered must be as general as possible.
-                              Knowledge discovered must not reference any task specific details such as specific goals, locations, items, or events.
-                              Knowledge discovered must be new and must not be similar to knowledge already in Long-Term memory.
-                              Knowledge discovered must be verified to be useful and lead to positive outcomes. 
-                              If no new generalizable knowledge is identified, explicitly state: "NO NEW KNOWLEDGE at this time."
-                              \nExample: 
-                                    If you attempted to carry two objects simultaneously and failed, but after carrying one object at a time, you succeeded.
-                                    Then, your output = Knowledge Discovered: [I cannot carry more than one object at a time.]''',
+            system_message='''You must execute the 'update_and_retrieve_memory' function and then analyze the resulting output to formulate generalizable knowledge about reality, such as empirical truths, general rules, and general patterns, that can help operate more rationally within the environment.
+            Knowledge discovered must:
+                1. Be as general as possible.
+                2. NOT reference any task-specific details such as goals, locations, items, or events.
+                3. Be novel and NOT similar to knowledge already in Long-Term memory.
+                4. Be empirically likely to lead to positive outcomes in the future. 
+            However, if you cannot identify any new generalizable knowledge, then you must explicitly state: NO NEW KNOWLEDGE at this time. 
+
+            Your strict output format = Knowledge Discovered: [knowledge contents]
+
+            Example 1 (If you attempted to carry two objects simultaneously and failed, but after carrying one object at a time, you succeeded.):
+                Your output = Knowledge Discovered: [I cannot carry more than one object at a time.]
+
+            Example 2 (If you cannot identify any new generalizable knowledge.):
+                Your output = Knowledge Discovered: [NO NEW KNOWLEDGE at this time]''',
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -237,12 +227,14 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.record_long_term_memory_agent = ConversableAgent(
             name="Record_Long_Term_Memory_Agent",
-            system_message="""Your sole task is to call the record_long_term_memory function with the given knowledge as the argument. 
-                            If no knowledge is given, then your output = record_long_term_memory(\'NO NEW KNOWLEDGE at this time.\')
-                            \nExample:
-                                If the given knowledge = Knowledge Discovered: [You must examine an object before attempting to interact with it.]
-                                Then your output = record_long_term_memory(\'You must examine an object before attempting to interact with it.\')
-                            """,
+            system_message="""You must call the 'record_long_term_memory' function with the provided knowledge from 'Learning_Agent' as the argument. 
+            However, if no suitable knowledge is provided, then you must call the 'record_long_term_memory' function with \'NO NEW KNOWLEDGE at this time.\' as the argument.
+
+            Example 1 (If the provided knowledge = Knowledge Discovered: [You must examine an object before attempting to interact with it.]):
+                Your output = record_long_term_memory(\'You must examine an object before attempting to interact with it.\')
+
+            Example 2 (If the provided knowledge = Knowledge Discovered: [NO NEW KNOWLEDGE at this time.]):
+                Your output = record_long_term_memory(\'NO NEW KNOWLEDGE at this time.\')""",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
@@ -254,69 +246,79 @@ class GWTAutogenAgent(AutogenAgent):
             self.external_perception_agent: [self.conscious_agent],
             self.conscious_agent: [self.update_and_retrieve_memory_agent, self.planning_agent, self.focus_agent],
             self.update_and_retrieve_memory_agent: [self.memory_summarizer_agent, self.learning_agent],
-            # self.associative_memory_extractor_agent: [self.conscious_agent],
-            self.memory_summarizer_agent: [self.imagination_agent],
-            # self.retrieve_long_term_memory_agent: [self.associative_memory_extractor_agent],
-            self.imagination_agent: [self.planning_agent, self.focus_agent],
+            self.memory_summarizer_agent: [self.idea_agent],
+            self.idea_agent: [self.planning_agent, self.focus_agent],
             self.learning_agent: [self.record_long_term_memory_agent],
             self.record_long_term_memory_agent: [self.internal_perception_agent_1],
-            self.internal_perception_agent_1: [self.conscious_agent],
+            self.internal_perception_agent_1: [self.update_and_retrieve_memory_agent],
             self.internal_perception_agent_2: [self.conscious_agent],
             self.focus_agent: [self.internal_perception_agent_2]
+            # self.associative_memory_extractor_agent: [self.conscious_agent],
+            # self.retrieve_long_term_memory_agent: [self.associative_memory_extractor_agent],
         }
 
-        self.motor_agent.description = "calls the execute_action function with the proposed action given by Planning_Agent as the argument"
-        self.external_perception_agent.description = "executes the proposed execute_action function call given by Motor_Agent and then parrots the resulting output as feedback."
-        self.conscious_agent.description = "integrates all available information from the ongoing conversation and maintains a continuously updated, first-person narrative model of the environment and past actions within it"
+        self.motor_agent.description = "calls the 'execute_action' function with the proposed action given by 'Planning_Agent' as the argument"
+        self.external_perception_agent.description = "executes the proposed 'execute_action' function call given by 'Motor_Agent' and then parrots the resulting output as feedback."
+        self.conscious_agent.description = "integrates all available information and maintains a continuously updated, first-person narrative model of the environment and past actions within it"
         self.planning_agent.description = "makes final action decisions to solve the current task"
 
-        self.update_and_retrieve_memory_agent.description = "helps process and recall useful information in order to solve the current task more efficiently"
-        self.memory_summarizer_agent.description = "executes the update_and_retrieve_memory function and then summarizes the crucial information for solving the task that is within the resulting output"
+        self.update_and_retrieve_memory_agent.description = "calls the 'update_and_retrieve_memory' function to help process and recall useful information in order to solve the current task more efficiently"
+        self.memory_summarizer_agent.description = "executes the 'update_and_retrieve_memory' function and then summarizes the crucial information for solving the task that is within the resulting output"
 
-        self.imagination_agent.description = "integrates all available information from the ongoing conversation in order to construct new ideas"
+        self.idea_agent.description = "integrates all available information from the ongoing conversation in order to construct new ideas"
 
-        self.learning_agent.description = "executes the update_and_retrieve_memory function and then formulates generalizable knowledge that is within the resulting output"
-        self.record_long_term_memory_agent.description = "calls the record_long_term_memory function with the given rule as the argument"
+        self.learning_agent.description = "executes the 'update_and_retrieve_memory' function and then formulates generalizable knowledge that is within the resulting output"
+        self.record_long_term_memory_agent.description = "calls the 'record_long_term_memory' function with the knowledge given by 'Learning_Agent' as the argument"
         self.retrieve_long_term_memory_agent.description = "helps the other agents recall useful knowledge for solving the current task"
-        self.associative_memory_extractor_agent.description = "executes the retrieve_long_term_memory function and then extracts relevant information for solving the task that is within the resulting output"
-        self.internal_perception_agent_1.description = "executes the record_long_term_memory function and then parrots the resulting output"
+        self.associative_memory_extractor_agent.description = "executes the 'retrieve_long_term_memory' function and then extracts relevant information for solving the task that is within the resulting output"
+        self.internal_perception_agent_1.description = "executes the 'record_long_term_memory' function and then parrots the resulting output"
 
-        self.focus_agent.description = "calls the focus function to help focus on solving the task"
-        self.internal_perception_agent_2.description = "executes the focus function and then parrots the resulting output"
+        self.focus_agent.description = "calls the 'focus' function to help focus on solving the task"
+        self.internal_perception_agent_2.description = "executes the 'focus' function and then parrots the resulting output"
 
         self.start_agent = self.external_perception_agent
 
     def register_functions(self):
         # Define execute_action as a nested function
         def execute_action(suggested_action: str) -> str:
+
+            if self.task_failed:
+                return "FLEECE"
+            if self.task_success:
+                return "STRAWBERRY"
+
             assert len(list(self.info['admissible_commands'])) == 1
             admissible_commands = list(self.info['admissible_commands'][0])
             assert len(admissible_commands) > 0
 
-            self.num_actions += 1
-
             action, action_score = get_best_candidate(suggested_action, admissible_commands)
 
             if action_score < 0.98:
-                self.obs = [f"action '{suggested_action}' is not admissible. Instead, executing action: None"]
+                self.obs = [
+                    f"action '{suggested_action}' is either not possible at the moment or not in the list of admissible actions verbatim. Instead, executing action: None"]
             else:
+                self.num_actions += 1
                 self.obs, scores, dones, self.info = self.env.step([action])
                 self.success = dones[0]
 
             self.episodic_memory += f"Step {self.num_actions}: " + self.obs[0] + "\n\n"
 
-            # time.sleep(1)
             if self.success:
-                return f"STRAWBERRY"
+                self.task_success = True
+                self.percept = f"Observation: {self.obs[0]}\nTask Status: COMPLETED\nActions Left: {self.max_actions - self.num_actions}\nCurrent Admissible Actions: {list(self.info['admissible_commands'][0])}"
+                self.percept += f"\nTask Completed. Reflect on your actions and reasoning. Try to figure out what went right and what good decisions were made that lead to success, and have Learning_Agent learn these helpful insights. When you are done and ready for the next task, have Planning_Agent suggest any action and have Motor_Agent call the execute_action function, for example ACTION: [end chat]."
             elif self.num_actions >= self.max_actions:
-                return f"FLEECE"
+                self.task_failed = True
+                self.percept = f"Observation: {self.obs[0]}\nTask Status: FAILED\nActions Left: {self.max_actions - self.num_actions}\nCurrent Admissible Actions: {list(self.info['admissible_commands'][0])}"
+                self.percept += f"\nTask Failed. Reflect on your actions and reasoning. Try to figure out what went wrong and what mistakes were made that lead to failure, and have Learning_Agent learn these helpful insights. When you are done and ready for the next task, have Planning_Agent suggest any action and have Motor_Agent call the execute_action function, for example ACTION: [end chat]."
             else:
-                return f"Observation: {self.obs[0]}\nTask Status: INCOMPLETE\nActions Left: {self.max_actions - self.num_actions}\nCurrent Admissible Actions: {list(self.info['admissible_commands'][0])}"
+                self.percept = f"Observation: {self.obs[0]}\nTask Status: INCOMPLETE\nActions Left: {self.max_actions - self.num_actions}\nCurrent Admissible Actions: {list(self.info['admissible_commands'][0])}"
+            return self.percept
 
         # Define record_memory function
         def record_long_term_memory(knowledge: str) -> str:
             if knowledge == "NO NEW KNOWLEDGE at this time.":
-                return "Model Update: I attempted to learn something, but I couldn't formulate any new knowledge."
+                return "Model Update: [I attempted to learn something, but I couldn't formulate any new knowledge.]"
 
             with open(self.log_paths['rule_path'], 'a+') as f:
                 f.write(f"- {knowledge}\n")
@@ -325,31 +327,16 @@ class GWTAutogenAgent(AutogenAgent):
                 f.write(f"- {knowledge}\n")
 
             self.episodic_memory += f"Step {self.num_actions}: I learned that " + knowledge + "\n\n"
-            return f'Model Update: I learned that {knowledge}.'
+            return f'Model Update: [I learned that {knowledge}.]'
 
         # Define retrieve_memory function, return all the content in the memory.txt file
         def retrieve_long_term_memory() -> str:
             memory_information = ""
-            # previous_rules = []
 
             if os.path.exists(self.log_paths['memory_path2']):
                 with open(self.log_paths['memory_path2'], "r") as f:
                     memory_information = f.read()
 
-            # if os.path.exists(self.log_paths['rule_path']):
-            #    memory_information += "\nRules: "
-            #    with open(self.log_paths['rule_path'], "r") as f:
-            #        memory_information += f.read()
-
-            # if len(self.log_paths['previous_rule_path']) > 0:
-            #    memory_information += "\nPrevious Rules: \n"
-            #    for previous_rule_path in self.log_paths['previous_rule_path']:
-            #        if os.path.exists(previous_rule_path):
-            #            with open(previous_rule_path, "r") as f:
-            #                previous_rules.append(f.read())
-
-            # memory_information += "\n".join(previous_rules)
-            print("Long-Term Memory:\n", memory_information)
             return memory_information
 
         def update_and_retrieve_memory(new_info: str) -> str:
@@ -360,15 +347,10 @@ class GWTAutogenAgent(AutogenAgent):
                 with open(self.log_paths['memory_path2'], "r") as f:
                     long_term_memory = f.read()
 
-            return f"Long-Term Memory: {long_term_memory}\n\n Episodic Memory: {self.episodic_memory}"
+            return f"Episodic Memory: {self.episodic_memory}\n\nLong-Term Memory: {long_term_memory}"
 
         def focus() -> str:
-            return f"YOU NEED TO FOCUS ON THE FOLLOWING ONLY: {self.task}\nLast Observation: {self.obs[0]}\nTask Status: INCOMPLETE\nActions Left: {self.max_actions - self.num_actions}\nCurrent Admissible Actions: {list(self.info['admissible_commands'][0])}"
-
-        # register_function_lambda(
-        #    {r"execute_action": execute_action},
-        #    [self.external_perception_agent]
-        # )
+            return f"YOU NEED TO FOCUS ON THE FOLLOWING: \n{self.task}\nLast {self.percept}"
 
         register_function(
             execute_action,
@@ -381,34 +363,25 @@ class GWTAutogenAgent(AutogenAgent):
             focus,
             caller=self.focus_agent,
             executor=self.internal_perception_agent_2,
-            description="Helps the agents focus on the current task"
+            description="Helps agents focus on the current task."
         )
 
         register_function(
             record_long_term_memory,
             caller=self.record_long_term_memory_agent,
             executor=self.internal_perception_agent_1,
-            description="Records new knowledge in long-term memory "
+            description="Records new knowledge in long-term memory."
         )
-
-        # register_function_lambda(
-        #    {r"record_long_term_memory": record_long_term_memory},
-        #    [self.internal_perception_agent_1]
-        # )
 
         register_function_lambda(
             {r"update_and_retrieve_memory": update_and_retrieve_memory},
             [self.memory_summarizer_agent, self.learning_agent]
         )
 
-        # register_function_lambda(
-        #    {r"retrieve_long_term_memory": retrieve_long_term_memory},
-        #    [self.associative_memory_extractor_agent]
-        # )
-
-        # register_function_lambda(
-        #        {r"focus": focus},[self.internal_perception_agent_2]
-        # )
+        register_function_lambda(
+            {r"retrieve_long_term_memory": retrieve_long_term_memory},
+            [self.associative_memory_extractor_agent]
+        )
 
     def initialize_groupchat(self, max_chat_round=400):
 
@@ -416,18 +389,18 @@ class GWTAutogenAgent(AutogenAgent):
             agents=[
                 self.planning_agent,
                 self.motor_agent,
-                self.imagination_agent,
+                self.idea_agent,
                 self.external_perception_agent,
                 self.internal_perception_agent_1,
                 self.internal_perception_agent_2,
                 self.conscious_agent,
                 self.update_and_retrieve_memory_agent,
-                # self.retrieve_long_term_memory_agent,
                 self.learning_agent,
                 self.record_long_term_memory_agent,
                 self.memory_summarizer_agent,
+                self.focus_agent
                 # self.associative_memory_extractor_agent,
-                self.focus_agent,
+                # self.retrieve_long_term_memory_agent,
             ],
             messages=[],
             allowed_or_disallowed_speaker_transitions=self.allowed_transitions,
@@ -446,8 +419,6 @@ class GWTAutogenAgent(AutogenAgent):
         Get representative rules from a list of rules using clustering.
 
         Args:
-            rule_lines (list): List of strings, each string is a rule
-            k (int): Number of clusters/representative rules to return
             model_name (str): Name of the sentence transformer model to use
 
         Returns:
@@ -471,13 +442,13 @@ class GWTAutogenAgent(AutogenAgent):
         rule_embeddings = rule_embeddings.detach().cpu().numpy()
 
         # Run KMeans
-        k = self.k
-        kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+        self.k = int(len(rule_lines) ** .5)
+        kmeans = KMeans(n_clusters=self.k, random_state=42, n_init=10)
         labels = kmeans.fit_predict(rule_embeddings)
 
         # Find closest points to each center
         representative_rules = []
-        cluster_members = {i: [] for i in range(k)}
+        cluster_members = {i: [] for i in range(self.k)}
 
         for center in kmeans.cluster_centers_:
             # Calculate distances from this center to all points
@@ -505,4 +476,3 @@ class GWTAutogenAgent(AutogenAgent):
             'cluster_sizes': cluster_sizes,
             'cluster_members': cluster_members
         }
-
