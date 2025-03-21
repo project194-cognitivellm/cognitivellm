@@ -13,7 +13,7 @@ class AutogenAgent:
         self.memory_path1 = memory_path1
         self.memory_path2 = memory_path2
         self.game_no = game_no
-        self.num_actions = 0
+        self.num_actions_taken = 0
         self.max_actions = max_actions
         self.success = False
         self.args = args
@@ -43,7 +43,7 @@ class AutogenAgent:
         assert self.group_chat_manager is not None, "self.group_chat_manager must be defined"
         assert self.group_chat is not None, "self.group_chat must be defined"
 
-        self.num_actions = 0
+        self.num_actions_taken = 0
         self.success = False
 
         chat_result = None

@@ -16,6 +16,21 @@ import wandb    # Install wandb, use wandb login in cmd, and then run the code
 
 
 def parse_arguments():
+    """
+    Parse command-line arguments for evaluating Autogen Agents on the ALFWorld environment.
+
+    This function sets up the argument parser, defines required and optional arguments for the
+    evaluation script, and returns the parsed arguments. It allows specifying a configuration
+    file and selecting one of the available agents for evaluation. Additionally, it provides
+    an option to enable long-term guidance.
+
+    Arguments:
+        None
+
+    Returns:
+        argparse.Namespace: Parsed command-line arguments including the configuration file,
+        selected agent, and additional options.
+    """
     parser = argparse.ArgumentParser(
         description="Evaluate different Autogen Agents on the ALFWorld environment."
     )
@@ -56,23 +71,7 @@ if __name__ == "__main__":
         config = yaml.safe_load(reader)
 
     wandb.init(project="cognitive_agents", entity="eduardocortes1100-university-of-california-berkeley")
-
-    # API_KEY = os.environ.get("OPENAI_API_KEY")
-
-    # API_KEY = os.environ.get("LAMBDA_API_KEY")
-    # BASE_URL = "https://api.lambdalabs.com/v1"
-
-    API_KEY = os.environ.get("BLOCK_KEY") #LA-d1cb298ec5a440a99a40c6e3026b91481a297f2a9db64305abd3ce8a21a9e34b #8b5a180f-e375-4839-8a4f-0e7adddcaaca
-
-    #BASE_URL = "https://api.llama-api.com/"
-
-    #MODEL = "llama3.1-70b" #"gpt-4o-mini" #"llama3.1-70b-instruct-berkeley"
-    #llm_config = {
-    #   "timeout": 1000,
-    #    "cache_seed": None,
-    #    "max_tokens": 500,
-    #    "config_list": [{"model": MODEL, "api_key": API_KEY, "base_url": BASE_URL}]}
-
+    API_KEY = os.environ.get("BLOCK_KEY")
     llm_config = {"config_list": [{"model": "gpt-4o", "api_key": API_KEY}]}
 
     eval_paths = config["general"]["evaluate"]["eval_paths"]
@@ -114,35 +113,28 @@ if __name__ == "__main__":
                     print("Initialized Environment")
 
                     obs, info = env.reset()
-                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, memory_path1=memory_path1, memory_path2=memory_path2, game_no = i, max_actions=50, args=args)
+                    agent = agent_class(env, obs, info, llm_config, log_path=base_path, memory_path1=memory_path1, memory_path2=memory_path2, game_no = i, max_actions=30, rounds_per_game=1, args=args)
 
                     log_paths = agent.get_log_paths()
 
-                    initial_message_content = ""
                     # find the task description in the observation, save it as a txt file.
                     task_description = obs[0].split("Your task is to: ")[1]
-                    initial_observation = obs[0].split("Your task is to: ")[0].split("\n\n")[1]
                     with open(log_paths['task_path'], "w") as f:
                         f.write(f"Task: {task_description}\n")
 
-                    initial_message_content += f"Task = [{task_description}]\n"
-
-                    agent.task = f"Task = [{task_description}]"
-
+                    initial_observation = obs[0].split("Your task is to: ")[0].split("\n\n")[1]
                     with open(log_paths['history_path'], "w") as f:
                         f.write(f"action: 'None'. observation: '{initial_observation}'\n")
-
-                    initial_message_content += f"Observation: {initial_observation}\n"
-
 
                     # save the admissible commands into a txt file
                     admissible_commands = list(info['admissible_commands'][0])
                     with open(log_paths['admissible_commands_path'], "w") as f:
                         f.write(f"{admissible_commands}\n")
-                    initial_message_content += f"Admissible commands: {admissible_commands}\n"
+
+                    initial_message_content = "You and all other Agents are collectively a singular conscious entity named ALFRED. " + agent.obs[0]
+                    initial_message_content += f"\nTask Status: INCOMPLETE\nActions Left: {agent.max_actions - agent.num_actions_taken}\nCurrent Admissible Actions: {list(agent.info['admissible_commands'][0])}"
 
                     run_chat = True
-
                     chat_result = None
                     error_message = None
 
@@ -198,9 +190,9 @@ if __name__ == "__main__":
                     print(f"Current Success Rate: {np.sum(success_list)}/{i + 1}")
                     print(f"Current Error List: {error_list}")
                     failure_list = [index + 1 for index, value in enumerate(success_list) if (not value) and (index + 1) not in error_list]
-                    print(f"Current Potential Failure List: {failure_list}")
+                    print(f"Current Failure List: {failure_list}")
                     print(f"Current Success List: {[index + 1 for index, value in enumerate(success_list) if value]}")
-                    print(f"Current Adjusted Success Rate: {np.sum(success_list)}/{i - len(error_list) + 1}\n\n")
+                    print(f"Current Error Adjusted Success Rate: {np.sum(success_list)}/{i - len(error_list) + 1}\n\n")
 
                     wandb.log({"success": success, "success_rate": np.sum(success_list) / len(success_list)})
 
