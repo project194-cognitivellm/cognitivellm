@@ -21,7 +21,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.internal_perception_agent_1 = None
         self.internal_perception_agent_2 = None
         self.conscious_agent = None
-        self.update_and_retrieve_memory_agent = None
+        self.retrieve_memory_agent = None
         self.retrieve_long_term_memory_agent = None
         self.learning_agent = None
         self.record_long_term_memory_agent = None
@@ -144,20 +144,10 @@ class GWTAutogenAgent(AutogenAgent):
             is_termination_msg=is_termination_msg_generic,
         )
 
-        self.update_and_retrieve_memory_agent = ConversableAgent(
-            name="Update_And_Retrieve_Memory_Agent",
-            system_message='''You must call the 'update_and_retrieve_memory' function with the provided model update as the argument.
-            EXCEPTION: However, if no suitable model update is provided, then you must call the 'update_and_retrieve_memory' function with an empty string as the argument.
-
-            Your strict output format = update_and_retrieve_memory(\'[provided model update]\')
-
-            IMPORTANT: It is necessary that you formulate and output a call to the 'update_and_retrieve_memory' function under all circumstances; You are not allowed not to respond. Therefore, do whatever is necessary to ensure you respond.
-
-            Example 1 (Context: If the provided model update = Model Update: [I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.]):
-                Your output must = update_and_retrieve_memory(\'I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer. I found spoon 1 on countertop 1 and attempted to put it into drawer 1, but I was unable to open that drawer. I am now deciding what to do next.\')
-
-            Example 2 (Context: If you are not provided a suitable model update):
-                Your output must = update_and_retrieve_memory(\'\')''',
+        self.retrieve_memory_agent = ConversableAgent(
+            name="Retrieve_Memory_Agent",
+            system_message='''You must call the 'retrieve_memory' function with no arguments. Your output must always without exception = retrieve_memory()
+                                    IMPORTANT: It is necessary that you formulate and output a call to the 'retrieve_memory' function under all circumstances; You are not allowed not to respond. Therefore, do whatever is necessary to ensure you respond.''',
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -186,7 +176,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.memory_summarizer_agent = ConversableAgent(
             name="Memory_Summarizer_Agent",
-            system_message="You must execute the 'update_and_retrieve_memory' function and then summarize the crucial information for solving the task that is within the resulting output.",
+            system_message="You must execute the 'retrieve_memory' function and then summarize the crucial information for solving the task that is within the resulting output.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -209,7 +199,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.learning_agent = ConversableAgent(
             name="Learning_Agent",
-            system_message='''You must execute the 'update_and_retrieve_memory' function and then analyze the resulting output to formulate generalizable knowledge about reality, such as empirical truths, general rules, and general patterns, that can help operate more rationally within the environment.
+            system_message='''You must execute the 'retrieve_memory' function and then analyze the resulting output to formulate generalizable knowledge about reality, such as empirical truths, general rules, and general patterns, that can help operate more rationally within the environment.
             Knowledge discovered must:
                 1. Be as general as possible.
                 2. NOT reference any task-specific details such as goals, locations, items, or events.
@@ -248,13 +238,13 @@ class GWTAutogenAgent(AutogenAgent):
             self.planning_agent: [self.motor_agent],
             self.motor_agent: [self.external_perception_agent],
             self.external_perception_agent: [self.conscious_agent],
-            self.conscious_agent: [self.update_and_retrieve_memory_agent, self.planning_agent, self.focus_agent],
-            self.update_and_retrieve_memory_agent: [self.memory_summarizer_agent, self.learning_agent],
+            self.conscious_agent: [self.retrieve_memory_agent, self.planning_agent, self.focus_agent],
+            self.retrieve_memory_agent: [self.memory_summarizer_agent, self.learning_agent],
             self.memory_summarizer_agent: [self.idea_agent],
             self.idea_agent: [self.planning_agent],
             self.learning_agent: [self.record_long_term_memory_agent],
             self.record_long_term_memory_agent: [self.internal_perception_agent_1],
-            self.internal_perception_agent_1: [self.update_and_retrieve_memory_agent],
+            self.internal_perception_agent_1: [self.retrieve_memory_agent],
             self.internal_perception_agent_2: [self.conscious_agent],
             self.focus_agent: [self.internal_perception_agent_2],
             # self.associative_memory_extractor_agent: [self.conscious_agent],
@@ -266,12 +256,12 @@ class GWTAutogenAgent(AutogenAgent):
         self.conscious_agent.description = "integrates all available information and maintains a continuously updated, first-person narrative model of the environment and past actions within it"
         self.planning_agent.description = "makes final action decisions to solve the current task"
 
-        self.update_and_retrieve_memory_agent.description = "calls the 'update_and_retrieve_memory' function to help process and recall useful information in order to solve the current task more effectively"
-        self.memory_summarizer_agent.description = "executes the 'update_and_retrieve_memory' function and then summarizes the crucial information for solving the task that is within the resulting output"
+        self.retrieve_memory_agent.description = "calls the 'retrieve_memory' function to help process and recall useful information in order to solve the current task more effectively"
+        self.memory_summarizer_agent.description = "executes the 'retrieve_memory' function and then summarizes the crucial information for solving the task that is within the resulting output"
 
         self.idea_agent.description = "integrates all available information from the ongoing conversation in order to construct new ideas"
 
-        self.learning_agent.description = "executes the 'update_and_retrieve_memory' function and then formulates generalizable knowledge that is within the resulting output"
+        self.learning_agent.description = "executes the 'retrieve_memory' function and then formulates generalizable knowledge that is within the resulting output"
         self.record_long_term_memory_agent.description = "calls the 'record_long_term_memory' function with the knowledge given by 'Learning_Agent' as the argument"
         self.retrieve_long_term_memory_agent.description = "calls the 'retrieve_long_term_memory' function to help recall useful knowledge for solving the current task"
         self.associative_memory_extractor_agent.description = "executes the 'retrieve_long_term_memory' function and then extracts relevant information for solving the task that is within the resulting output"
@@ -287,7 +277,7 @@ class GWTAutogenAgent(AutogenAgent):
         def execute_action(suggested_action: str) -> str:
 
             if not suggested_action or suggested_action == "do nothing":
-                return f"YOU NEED TO FOCUS ON THE FOLLOWING:\nTask: {self.task}\nLast {self.percept}"
+                return f"NO ACTION GIVEN. YOU NEED TO FOCUS ON THE FOLLOWING:\nTask: {self.task}\nLast {self.percept}"
 
             if self.task_failed and self.rounds_left == 0:
                 return "FLEECE"
@@ -360,16 +350,13 @@ class GWTAutogenAgent(AutogenAgent):
 
             return memory_information
 
-        def update_and_retrieve_memory(new_info: str) -> str:
-            if new_info:
-                self.episodic_memory += f"Time {self.num_actions_taken}: " + "You update your world model with the following - " + new_info + "\n"
-
+        def retrieve_memory() -> str:
             long_term_memory = ""
             if os.path.exists(self.log_paths['memory_path2']):
                 with open(self.log_paths['memory_path2'], "r") as f:
                     long_term_memory = f.read()
 
-            return f"Episodic Memory: {self.episodic_memory}\n\nLong-Term Memory: {long_term_memory}"
+            return f"EPISODIC MEMORY:\n{self.episodic_memory}\n\nWORKING LONG-TERM MEMORY:\n{long_term_memory}"
 
         def focus() -> str:
             return f"YOU NEED TO FOCUS ON THE FOLLOWING: \nTask: {self.task}\nLast {self.percept}"
@@ -396,7 +383,7 @@ class GWTAutogenAgent(AutogenAgent):
         )
 
         register_function_lambda(
-            {r"update_and_retrieve_memory": update_and_retrieve_memory},
+            {r"retrieve_memory": retrieve_memory},
             [self.memory_summarizer_agent, self.learning_agent]
         )
 
@@ -416,13 +403,11 @@ class GWTAutogenAgent(AutogenAgent):
                 self.internal_perception_agent_1,
                 self.internal_perception_agent_2,
                 self.conscious_agent,
-                self.update_and_retrieve_memory_agent,
+                self.retrieve_memory_agent,
                 self.learning_agent,
                 self.record_long_term_memory_agent,
                 self.memory_summarizer_agent,
                 self.focus_agent,
-                # self.associative_memory_extractor_agent,
-                # self.retrieve_long_term_memory_agent
             ],
             messages=[],
             allowed_or_disallowed_speaker_transitions=self.allowed_transitions,
@@ -455,21 +440,24 @@ class GWTAutogenAgent(AutogenAgent):
                 rule_text = file.read()
 
         rule_lines = [line.strip() for line in rule_text.split('\n') if line.strip()]
+        num_rules = len(rule_lines)
 
-        # Initialize the sentence transformer
-        sentence_transformer_model = SentenceTransformer(model_name)
-
-        # Compute embeddings for each line
-        rule_embeddings = sentence_transformer_model.encode(rule_lines, convert_to_tensor=True)
-        rule_embeddings = rule_embeddings.detach().cpu().numpy()
-
-        # Run KMeans
-        self.k = int(len(rule_lines) ** .5)
-        # self.k = len(rule_lines)//5
-
-        if not self.k:
+        if num_rules == 0:
             return {'representative_rules': [], 'cluster_sizes': {}, 'cluster_members': {}}
 
+        # Initialize model and compute embeddings
+        sentence_transformer_model = SentenceTransformer(model_name)
+        rule_embeddings = sentence_transformer_model.encode(rule_lines, convert_to_tensor=True).cpu().numpy()
+
+        # Determine number of clusters
+        if num_rules <= 10:
+            self.k = num_rules
+        elif num_rules <= 100:
+            self.k = 10
+        else:
+            self.k = int(np.sqrt(num_rules))
+
+        # Perform KMeans clustering
         kmeans = KMeans(n_clusters=self.k, random_state=42, n_init=10)
         labels = kmeans.fit_predict(rule_embeddings)
 

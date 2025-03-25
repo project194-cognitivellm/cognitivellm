@@ -21,7 +21,7 @@ from baseline_agent import BaselineAutogenAgent
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 
 global_num_games_to_evaluate = 30
-global_max_actions_per_game = 40
+global_max_actions_per_game = 60
 global_rounds_per_game = 2
 
 def parse_arguments():
@@ -55,8 +55,8 @@ def setup_environment_and_memory():
     memory_path = "memory"
     os.makedirs(memory_path, exist_ok=True)
 
-    memory_path1 = os.path.join(memory_path, "memory1-1.txt")
-    memory_path2 = os.path.join(memory_path, "memory2-1.txt")
+    memory_path1 = os.path.join(memory_path, "memory1.txt")
+    memory_path2 = os.path.join(memory_path, "memory2.txt")
 
     for path in [memory_path1, memory_path2]:
         if not os.path.exists(path):
@@ -219,6 +219,9 @@ if __name__ == "__main__":
                     print(f"Errors: {error_list}")
                     print(f"Error-Adjusted Success Rate: {np.sum(success_list)}/{num_games_evaluated - len(error_list)}")
                     print(f"Remaining Games: {selected_games[num_games_evaluated:]}\n")
+
+                    if not selected_games[num_games_evaluated:]:
+                        break
 
                     wandb.log({"success": success, "success_rate": np.sum(success_list) / len(success_list)})
 
