@@ -22,11 +22,9 @@ class GWTAutogenAgent(AutogenAgent):
         self.internal_perception_agent_2 = None
         self.conscious_agent = None
         self.retrieve_memory_agent = None
-        self.retrieve_long_term_memory_agent = None
         self.learning_agent = None
         self.record_long_term_memory_agent = None
         self.memory_summarizer_agent = None
-        self.associative_memory_extractor_agent = None
         self.focus_agent = None
 
         self.k = 0
@@ -54,6 +52,15 @@ class GWTAutogenAgent(AutogenAgent):
             llm_config=self.llm_config,
             is_termination_msg=lambda msg: False,
             human_input_mode="NEVER"
+        )
+
+        self.retrieve_memory_agent = ConversableAgent(
+            name="Retrieve_Memory_Agent",
+            system_message='''You must call the 'retrieve_memory' function with no arguments. Your output must always without exception = retrieve_memory()
+                    IMPORTANT: It is necessary that you formulate and output a call to the 'retrieve_memory' function under all circumstances. Therefore, do whatever is necessary to ensure you do so.''',
+            llm_config=self.llm_config,
+            human_input_mode="NEVER",
+            is_termination_msg=lambda msg: False,
         )
 
         self.planning_agent = ConversableAgent(
@@ -90,15 +97,6 @@ class GWTAutogenAgent(AutogenAgent):
 
             Example 2 (Context: If no suitable action is provided):
                 Your output must = execute_action(\'\')''',
-            llm_config=self.llm_config,
-            human_input_mode="NEVER",
-            is_termination_msg=lambda msg: False,
-        )
-
-        self.retrieve_long_term_memory_agent = ConversableAgent(
-            name="Retrieve_Long_Term_Memory_Agent",
-            system_message='''You must call the 'retrieve_long_term_memory' function with no arguments. Your output must always without exception = retrieve_long_term_memory()
-            IMPORTANT: It is necessary that you formulate and output a call to the 'retrieve_long_term_memory' function under all circumstances. Therefore, do whatever is necessary to ensure you do so.''',
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -144,15 +142,6 @@ class GWTAutogenAgent(AutogenAgent):
             is_termination_msg=is_termination_msg_generic,
         )
 
-        self.retrieve_memory_agent = ConversableAgent(
-            name="Retrieve_Memory_Agent",
-            system_message='''You must call the 'retrieve_memory' function with no arguments. Your output must always without exception = retrieve_memory()
-                                    IMPORTANT: It is necessary that you formulate and output a call to the 'retrieve_memory' function under all circumstances; You are not allowed not to respond. Therefore, do whatever is necessary to ensure you respond.''',
-            llm_config=self.llm_config,
-            human_input_mode="NEVER",
-            is_termination_msg=lambda msg: False,
-        )
-
         self.external_perception_agent = ConversableAgent(
             name="External_Perception_Agent",
             llm_config=None,
@@ -177,21 +166,6 @@ class GWTAutogenAgent(AutogenAgent):
         self.memory_summarizer_agent = ConversableAgent(
             name="Memory_Summarizer_Agent",
             system_message="You must execute the 'retrieve_memory' function and then summarize the crucial information for solving the task that is within the resulting output.",
-            llm_config=self.llm_config,
-            human_input_mode="NEVER",
-            is_termination_msg=lambda msg: False,
-        )
-
-        self.associative_memory_extractor_agent = ConversableAgent(
-            name="Associative_Memory_Extractor_Agent",
-            system_message='''You must execute the 'retrieve_long_term_memory' function and then extract the single most relevant memory (to the given model update) that is within the resulting output.
-
-            EXCEPTION: However, if there is nothing relevant to remember, then your output must = Model Update: I attempted to remember something, but I couldn't remember anything useful.
-
-            Your strict output format =  Model Update: I just remembered that [most relevant memory].
-
-            Example (Context: The fact that spoons are most likely to be found on countertops is within the resulting output. The given model update = Model Update: [I am in a room with drawers (1-5), cabinets (1-14), and countertops (1-3). My task is to find spoon 1 and place it in a drawer.]):
-                Your output can = Model Update: I just remembered that spoons are most likely to be found on countertops''',
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
@@ -246,9 +220,7 @@ class GWTAutogenAgent(AutogenAgent):
             self.record_long_term_memory_agent: [self.internal_perception_agent_1],
             self.internal_perception_agent_1: [self.retrieve_memory_agent],
             self.internal_perception_agent_2: [self.conscious_agent],
-            self.focus_agent: [self.internal_perception_agent_2],
-            # self.associative_memory_extractor_agent: [self.conscious_agent],
-            # self.retrieve_long_term_memory_agent: [self.associative_memory_extractor_agent],
+            self.focus_agent: [self.internal_perception_agent_2]
         }
 
         self.motor_agent.description = "calls the 'execute_action' function with the proposed action given by 'Planning_Agent' as the argument"
@@ -263,8 +235,6 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.learning_agent.description = "executes the 'retrieve_memory' function and then formulates generalizable knowledge that is within the resulting output"
         self.record_long_term_memory_agent.description = "calls the 'record_long_term_memory' function with the knowledge given by 'Learning_Agent' as the argument"
-        self.retrieve_long_term_memory_agent.description = "calls the 'retrieve_long_term_memory' function to help recall useful knowledge for solving the current task"
-        self.associative_memory_extractor_agent.description = "executes the 'retrieve_long_term_memory' function and then extracts relevant information for solving the task that is within the resulting output"
         self.internal_perception_agent_1.description = "executes the 'record_long_term_memory' function and then parrots the resulting output"
 
         self.focus_agent.description = "calls the 'focus' function to help focus on solving the task"
@@ -273,9 +243,8 @@ class GWTAutogenAgent(AutogenAgent):
         self.start_agent = self.external_perception_agent
 
     def register_functions(self):
-        # Define execute_action as a nested function
-        def execute_action(suggested_action: str) -> str:
 
+        def execute_action(suggested_action: str) -> str:
             if not suggested_action or suggested_action == "do nothing":
                 return f"NO ACTION GIVEN. YOU NEED TO FOCUS ON THE FOLLOWING:\nTask: {self.task}\nLast {self.percept}"
 
@@ -306,7 +275,6 @@ class GWTAutogenAgent(AutogenAgent):
             self.num_actions_taken += 1
 
             self.episodic_memory += f"Time {self.num_actions_taken}: " + self.obs[0] + "\n"
-            # print(self.episodic_memory)
 
             if self.success:
                 self.task_success = True
@@ -321,15 +289,9 @@ class GWTAutogenAgent(AutogenAgent):
                 self.percept = f"Observation: {self.obs[0]}\nTask Status: INCOMPLETE\nActions Left: {self.max_actions - self.num_actions_taken}\nCurrent Admissible Actions: {list(self.info['admissible_commands'][0])}"
             return self.percept
 
-        # Define record_memory function
         def record_long_term_memory(knowledge: str) -> str:
-
             if knowledge == "NO NEW KNOWLEDGE at this time." or len(knowledge) < 45:
                 return "Model Update: [I attempted to learn something, but I couldn't formulate any new knowledge.]"
-            # else:
-            #    _, knowledge_score = get_best_candidate(knowledge, ["NO NEW KNOWLEDGE at this time."])
-            #    if knowledge_score >= 0.8:
-            #        return "Model Update: [I attempted to learn something, but I couldn't formulate any new knowledge.]"
 
             with open(self.log_paths['rule_path'], 'a+') as f:
                 f.write(f"- {knowledge}\n")
@@ -339,16 +301,6 @@ class GWTAutogenAgent(AutogenAgent):
 
             self.episodic_memory += f"Time {self.num_actions_taken}: You learned that " + knowledge + "\n"
             return f'Model Update: [I learned that {knowledge}.]'
-
-        # Define retrieve_memory function, return all the content in the memory.txt file
-        def retrieve_long_term_memory() -> str:
-            memory_information = ""
-
-            if os.path.exists(self.log_paths['memory_path2']):
-                with open(self.log_paths['memory_path2'], "r") as f:
-                    memory_information = f.read()
-
-            return memory_information
 
         def retrieve_memory() -> str:
             long_term_memory = ""
@@ -387,12 +339,7 @@ class GWTAutogenAgent(AutogenAgent):
             [self.memory_summarizer_agent, self.learning_agent]
         )
 
-        register_function_lambda(
-            {r"retrieve_long_term_memory": retrieve_long_term_memory},
-            [self.associative_memory_extractor_agent]
-        )
-
-    def initialize_groupchat(self, max_chat_round=400):
+    def initialize_groupchat(self, max_chat_round=500):
 
         self.group_chat = GroupChat(
             agents=[
@@ -464,7 +411,6 @@ class GWTAutogenAgent(AutogenAgent):
         # Find closest points to each center
         representative_rules = []
         cluster_members = {i: [] for i in range(self.k)}
-
         for center in kmeans.cluster_centers_:
             # Calculate distances from this center to all points
             distances = np.linalg.norm(rule_embeddings - center, axis=1)
