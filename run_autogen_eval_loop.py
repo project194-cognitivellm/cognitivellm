@@ -20,7 +20,7 @@ from gwt_agent import GWTAutogenAgent
 from baseline_agent import BaselineAutogenAgent
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 
-global_num_games_to_evaluate = 30
+global_num_games_to_evaluate = 139
 global_max_actions_per_game = 60
 global_rounds_per_game = 2
 
@@ -86,7 +86,9 @@ if __name__ == "__main__":
         config = yaml.safe_load(reader)
 
     # Initialize Weights & Biases
-    wandb.init(project="cognitive_agents", entity="eduardocortes1100-university-of-california-berkeley")
+    wandb.init(
+        project="cognitive_agents",
+        entity="eduardocortes1100-university-of-california-berkeley")
 
     # Setup memory and output directories
     base_path, memory_path1, memory_path2 = setup_environment_and_memory()
@@ -126,14 +128,17 @@ if __name__ == "__main__":
                     num_games_to_evaluate = global_num_games_to_evaluate
 
                 selected_games = sorted(random.sample(range(1, num_games + 1), num_games_to_evaluate))
-                #selected_games = [6]
+                #selected_games = [7, 8, 15, 25, 30]
                 #num_games_to_evaluate = len(selected_games)
                 print(f"Selected {num_games_to_evaluate} Games: {selected_games}")
 
-                success_list = []
+                result_list = []
                 error_list = []
-
                 num_games_evaluated = 0
+
+                # Track metrics
+                cumulative_actions = 0
+
                 for i in range(1, num_games + 1):
                     obs, info = env.reset()
 
@@ -177,12 +182,18 @@ if __name__ == "__main__":
                         f"\nCurrent Admissible Actions: {list(agent.info['admissible_commands'][0])}"
                     )
 
+                    wandb.log({
+                        "game_no": i,
+                    }, step=num_games_evaluated)
+
+                    start_time = time.time()
                     try:
                         chat_result, error_message = agent.run_chat(initial_message)
                     except Exception as e:
                         error_message = str(e)
                         chat_result = None
                         print(f"Chat Error: {error_message}")
+                    end_time = time.time()
 
                     # Log errors
                     if error_message:
@@ -209,21 +220,36 @@ if __name__ == "__main__":
 
                     # Evaluate and log success
                     success = agent.success
-                    success_list.append(success)
+                    result_list.append(success)
+                    success_rate = np.sum(result_list) / num_games_evaluated
+                    elapsed_time = end_time - start_time
+                    if success:
+                        cumulative_actions += agent.num_actions_taken
+                    avg_actions_taken_per_successful_game = cumulative_actions / np.sum(result_list)
+
+                    wandb.log({
+                        "success": int(success),
+                        "actions_taken": agent.num_actions_taken,
+                        "success_rate": success_rate,
+                        "avg_actions_taken_per_successful_game": avg_actions_taken_per_successful_game,
+                        "runtime": elapsed_time
+                    }, step=num_games_evaluated)
+
 
                     print(f"[Ran Game #{i}]")
                     print(f"Evaluation {num_games_evaluated} of {num_games_to_evaluate}")
                     print(f"Success: {success}")
-                    print(f"Success Rate: {np.sum(success_list)}/{num_games_evaluated}")
-                    print(f"Failures: {[j+1 for j, val in enumerate(success_list) if not val and (j+1) not in error_list]}")
+                    print(f"Rounds Taken: {global_rounds_per_game - agent.rounds_left} out of {global_rounds_per_game}")
+                    print(f"Actions Taken: {agent.num_actions_taken} out of {global_max_actions_per_game}")
+                    print(f"Success Rate: {np.sum(result_list)}/{num_games_evaluated} = {success_rate * 100:.2f}%")
+                    print(f"Average Actions per Successful Game: {avg_actions_taken_per_successful_game:.2f} out of {global_max_actions_per_game}")
+                    print(f"Failures: {[j+1 for j, val in enumerate(result_list) if not val and (j+1) not in error_list]}")
                     print(f"Errors: {error_list}")
-                    print(f"Error-Adjusted Success Rate: {np.sum(success_list)}/{num_games_evaluated - len(error_list)}")
+                    print(f"Error-Adjusted Success Rate: {np.sum(result_list)}/{num_games_evaluated - len(error_list)} = {np.sum(result_list) * 100/ (num_games_evaluated - len(error_list)):.2f}%")
                     print(f"Remaining Games: {selected_games[num_games_evaluated:]}\n")
 
                     if not selected_games[num_games_evaluated:]:
                         break
-
-                    wandb.log({"success": success, "success_rate": np.sum(success_list) / len(success_list)})
 
                     # Save result for this game
                     with open(log_paths['result_path'], "w") as f:
@@ -231,11 +257,11 @@ if __name__ == "__main__":
                         f.write(f"Chat Round: {chat_round_list[-1]}\n")
 
                     with open(result_list_path, "w") as f:
-                        f.write(f"Success List: {success_list}\n")
+                        f.write(f"Success List: {result_list}\n")
                         f.write(f"Chat Round List: {chat_round_list}\n")
 
-                # Summary
-                print(f"Final Success Rate: {np.sum(success_list)}/{num_games_to_evaluate}")
-                print(f"Final Error-Adjusted Success Rate: {np.sum(success_list)}/{num_games_to_evaluate - len(error_list)}")
+                # Final Success Summary
+                print(f"Final Success Rate: {np.sum(result_list)}/{num_games_to_evaluate}")
+                print(f"Final Error-Adjusted Success Rate: {np.sum(result_list)}/{num_games_to_evaluate - len(error_list)}")
 
     wandb.finish()
