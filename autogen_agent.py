@@ -3,16 +3,15 @@ import os
 
 # This is a template class for the Autogen Agent
 class AutogenAgent:
-    def __init__(self, env, obs, info, llm_config, log_path, memory_path1, memory_path2, game_no, max_actions=50,
-                 args=None):
+    def __init__(self, llm_config, log_path, game_no=1, max_chat_round=400, max_actions=50, args=None, env=None, obs="",
+                 info=None):
         self.env = env
         self.obs = obs
         self.info = info
+        self.game_no = game_no
+        self.max_chat_round = max_chat_round
         self.llm_config = llm_config
         self.log_path = log_path
-        self.memory_path1 = memory_path1
-        self.memory_path2 = memory_path2
-        self.game_no = game_no
         self.num_actions_taken = 0
         self.max_actions = max_actions
         self.success = False
@@ -35,7 +34,7 @@ class AutogenAgent:
     def register_functions(self):
         raise NotImplementedError
 
-    def initialize_groupchat(self, max_chat_round=1000):
+    def initialize_groupchat(self):
         raise NotImplementedError
 
     def run_chat(self, initial_message_content):
@@ -77,12 +76,6 @@ class AutogenAgent:
 
         return chat_result, error_message
 
-    def update_game_no(self, game_no=None):
-        if game_no is not None:
-            self.game_no = game_no
-        else:
-            self.game_no += 1
-
     def register_log_paths(self):
 
         game_path = os.path.join(self.log_path, f"game_{self.game_no}")
@@ -111,8 +104,6 @@ class AutogenAgent:
             "result_path": result_path,
             "error_message_path": error_message_path,
             "previous_rule_path": previous_rule_path,
-            "memory_path1": self.memory_path1,
-            "memory_path2": self.memory_path2
         }
 
     def get_log_paths(self):

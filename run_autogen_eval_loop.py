@@ -22,7 +22,10 @@ from autogen import ConversableAgent, register_function, GroupChat, GroupChatMan
 
 global_num_games_to_evaluate = 139
 global_max_actions_per_game = 60
-global_rounds_per_game = 2
+global_max_chat_rounds_per_game = 450
+global_split_rounds_per_game = 1
+base_path = os.path.join("runs", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+os.makedirs(base_path, exist_ok=True)
 
 def parse_arguments():
     """
@@ -40,31 +43,6 @@ def parse_arguments():
     parser.add_argument("--long_term_guidance", action="store_true", help="Enable long-term guidance")
 
     return parser.parse_args()
-
-
-def setup_environment_and_memory():
-    """
-    Set up directories and memory files required for the evaluation run.
-    Returns paths to memory1.txt and memory2.txt.
-    """
-    # Create run-specific output directory with timestamp
-    base_path = os.path.join("runs", datetime.now().strftime("%Y%m%d_%H%M%S"))
-    os.makedirs(base_path, exist_ok=True)
-
-    # Ensure memory directory and memory files exist
-    memory_path = "memory"
-    os.makedirs(memory_path, exist_ok=True)
-
-    memory_path1 = os.path.join(memory_path, "memory1.txt")
-    memory_path2 = os.path.join(memory_path, "memory2.txt")
-
-    for path in [memory_path1, memory_path2]:
-        if not os.path.exists(path):
-            with open(path, 'w') as f:
-                pass  # Create an empty file
-
-    return base_path, memory_path1, memory_path2
-
 
 if __name__ == "__main__":
     args = parse_arguments()
@@ -90,13 +68,19 @@ if __name__ == "__main__":
         project="cognitive_agents",
         entity="eduardocortes1100-university-of-california-berkeley")
 
-    # Setup memory and output directories
-    base_path, memory_path1, memory_path2 = setup_environment_and_memory()
-    result_list_path = os.path.join(base_path, "result_list.txt")
-
     # Setup API key
     API_KEY = os.environ.get("BLOCK_KEY")
     llm_config = {"config_list": [{"model": "gpt-4o", "api_key": API_KEY}]}
+
+    # Initialize Agent
+    agent = agent_class(
+        llm_config,
+        log_path=base_path,
+        max_chat_round=global_max_chat_rounds_per_game,
+        max_actions=global_max_actions_per_game,
+        rounds_per_game=global_split_rounds_per_game,
+        args=args
+    )
 
     # Extract evaluation parameters
     eval_paths = config["general"]["evaluate"]["eval_paths"]
@@ -119,72 +103,67 @@ if __name__ == "__main__":
                 env_class = getattr(environment, eval_env_type)
                 alfred_env = env_class(config, train_eval="eval_out_of_distribution")
                 env = alfred_env.init_env(batch_size=1)
-                num_games = alfred_env.num_games
+                total_num_games = alfred_env.num_games
 
                 # Random selection of evaluation games
-                if global_rounds_per_game > num_games:
-                    num_games_to_evaluate = num_games
+                if global_num_games_to_evaluate > total_num_games:
+                    num_games_to_evaluate = total_num_games
                 else:
                     num_games_to_evaluate = global_num_games_to_evaluate
 
-                selected_games = sorted(random.sample(range(1, num_games + 1), num_games_to_evaluate))
-                #selected_games = [7, 8, 15, 25, 30]
+                selected_games = sorted(random.sample(range(1, total_num_games + 1), num_games_to_evaluate))
+                #selected_games = [124, 125] #[35, 94, 124, 125] #[35, 52, 57, 69, 77, 79, 86, 93, 94, 107, 109, 121, 123, 124, 125, 139]
                 #num_games_to_evaluate = len(selected_games)
                 print(f"Selected {num_games_to_evaluate} Games: {selected_games}")
 
-                result_list = []
                 error_list = []
-                num_games_evaluated = 0
+                success_list = []
+                failure_list = []
+                result_dict = {}
 
                 # Track metrics
-                cumulative_actions = 0
+                cumulative_successful_actions = 0
+                avg_actions_taken_per_successful_game = 0
+                cumulative_failing_actions = 0
+                avg_actions_taken_per_failing_game = 0
 
-                for i in range(1, num_games + 1):
+                cumulative_successful_chat_rounds = 0
+                avg_chat_rounds_per_successful_game = 0
+                cumulative_failing_chat_rounds = 0
+                avg_chat_rounds_per_failing_game = 0
+
+                cumulative_successful_runtime = 0
+                avg_runtime_per_successful_game = 0
+                cumulative_failing_runtime = 0
+                avg_runtime_per_failing_game = 0
+
+                cumulative_runtime = 0
+
+                num_games_evaluated = 0
+                num_successes = 0
+                success_rate = 0
+                num_games_no_error = 0
+
+                for i in range(1, total_num_games + 1):
                     obs, info = env.reset()
 
                     if i not in selected_games:
                         print(f"Skipped Game #{i}")
                         continue
 
-                    print(f"\n[Running Game #{i}]")
                     num_games_evaluated += 1
+                    agent.set_environment(env, obs, info, i)
+                    log_paths = agent.log_paths
+                    print(f"\n[Running Game #{i}]")
                     print(f"Evaluation {num_games_evaluated} of {num_games_to_evaluate}")
-                    agent = agent_class(
-                        env, obs, info, llm_config,
-                        log_path=base_path,
-                        memory_path1=memory_path1,
-                        memory_path2=memory_path2,
-                        game_no=i,
-                        max_actions=global_max_actions_per_game,
-                        rounds_per_game=global_rounds_per_game,
-                        args=args
-                    )
-
-                    log_paths = agent.get_log_paths()
-
-                    # Log task description and initial observation
-                    task_description = obs[0].split("Your task is to: ")[1]
-                    initial_observation = obs[0].split("Your task is to: ")[0].split("\n\n")[1]
-
-                    with open(log_paths['task_path'], "w") as f:
-                        f.write(f"Task: {task_description}\n")
-
-                    with open(log_paths['history_path'], "w") as f:
-                        f.write(f"action: 'None'. observation: '{initial_observation}'\n")
-
-                    with open(log_paths['admissible_commands_path'], "w") as f:
-                        f.write(f"{list(info['admissible_commands'][0])}\n")
 
                     initial_message = (
-                        "You and all other Agents are collectively a singular conscious entity named ALFRED. " +
-                        agent.obs[0] +
-                        f"\nTask Status: INCOMPLETE\nActions Left: {agent.max_actions - agent.num_actions_taken}" +
-                        f"\nCurrent Admissible Actions: {list(agent.info['admissible_commands'][0])}"
+                        "You and all other Agents are collectively a singular conscious entity named ALFRED. " + agent.obs[0] +
+                        f"\nYou have a max of {agent.max_chat_round} chat rounds to complete the task; This is the maximum number of agent chat transitions the conversation can make before the environment terminates." +
+                        f"\nBeginning Task Status: INCOMPLETE" +
+                        f"\nMax actions to complete task: {agent.max_actions}" +
+                        f"\nBeginning Admissible Actions: {agent.admissible_actions}"
                     )
-
-                    wandb.log({
-                        "game_no": i,
-                    }, step=num_games_evaluated)
 
                     start_time = time.time()
                     try:
@@ -219,49 +198,84 @@ if __name__ == "__main__":
                             f.write("Error Message: no chat history in chat result\n")
 
                     # Evaluate and log success
+                    elapsed_minutes = (end_time - start_time) / 60
+                    cumulative_runtime += elapsed_minutes
+                    num_games_no_error = num_games_evaluated - len(error_list)
+
                     success = agent.success
-                    result_list.append(success)
-                    success_rate = np.sum(result_list) / num_games_evaluated
-                    elapsed_time = end_time - start_time
+                    result_dict[i] = success
                     if success:
-                        cumulative_actions += agent.num_actions_taken
-                    avg_actions_taken_per_successful_game = cumulative_actions / np.sum(result_list)
+                        num_successes += 1
+                        success_list.append(i)
+                        cumulative_successful_actions += agent.num_actions_taken
+                        cumulative_successful_chat_rounds += chat_round_list[-1]
+                        cumulative_successful_runtime += elapsed_minutes
+                        avg_actions_taken_per_successful_game = cumulative_successful_actions / num_successes
+                        avg_chat_rounds_per_successful_game = cumulative_successful_chat_rounds / num_successes
+                        avg_runtime_per_successful_game = cumulative_successful_runtime / num_successes
+                    else:
+                        num_failures = num_games_evaluated - num_successes
+                        failure_list.append(i)
+                        cumulative_failing_actions += agent.num_actions_taken
+                        cumulative_failing_chat_rounds += chat_round_list[-1]
+                        cumulative_failing_runtime += elapsed_minutes
+                        avg_actions_taken_per_failing_game = cumulative_failing_actions / num_failures
+                        avg_chat_rounds_per_failing_game = cumulative_failing_chat_rounds / num_failures
+                        avg_runtime_per_failing_game = cumulative_failing_runtime / num_failures
+
+                    success_rate = num_successes / num_games_evaluated
 
                     wandb.log({
+                        "game_no": i,
                         "success": int(success),
                         "actions_taken": agent.num_actions_taken,
                         "success_rate": success_rate,
                         "avg_actions_taken_per_successful_game": avg_actions_taken_per_successful_game,
-                        "runtime": elapsed_time
+                        "avg_chat_rounds_per_successful_game": avg_chat_rounds_per_successful_game,
+                        "avg_runtime_per_successful_game": avg_runtime_per_successful_game,
+                        "runtime": elapsed_minutes,
+                        "cumulative_runtime": cumulative_runtime,
+                        "chat_rounds": chat_round_list[-1]
                     }, step=num_games_evaluated)
-
 
                     print(f"[Ran Game #{i}]")
                     print(f"Evaluation {num_games_evaluated} of {num_games_to_evaluate}")
                     print(f"Success: {success}")
-                    print(f"Rounds Taken: {global_rounds_per_game - agent.rounds_left} out of {global_rounds_per_game}")
+                    print(f"Runtime: {elapsed_minutes:.2f} minutes")
+                    print(f"Rounds Taken: {global_split_rounds_per_game - agent.rounds_left} out of {global_split_rounds_per_game}")
                     print(f"Actions Taken: {agent.num_actions_taken} out of {global_max_actions_per_game}")
-                    print(f"Success Rate: {np.sum(result_list)}/{num_games_evaluated} = {success_rate * 100:.2f}%")
+                    print(f"Success Rate: {num_successes}/{num_games_evaluated} = {100 * success_rate:.2f}%")
                     print(f"Average Actions per Successful Game: {avg_actions_taken_per_successful_game:.2f} out of {global_max_actions_per_game}")
-                    print(f"Failures: {[j+1 for j, val in enumerate(result_list) if not val and (j+1) not in error_list]}")
+                    print(f"Average Chat Rounds per Successful Game: {avg_chat_rounds_per_successful_game:.2f} out of {global_max_chat_rounds_per_game}")
+                    print(f"Average Runtime per Successful Game: {avg_runtime_per_successful_game:.2f} minutes")
+                    print(f"Average Actions per Failing Game: {avg_actions_taken_per_failing_game:.2f} out of {global_max_actions_per_game}")
+                    print(f"Average Chat Rounds per Failing Game: {avg_chat_rounds_per_failing_game:.2f} out of {global_max_chat_rounds_per_game}")
+                    print(f"Average Runtime per Failing Game: {avg_runtime_per_failing_game:.2f} minutes")
+                    print(f"Successes: {success_list}")
+                    print(f"Failures: {failure_list}")
                     print(f"Errors: {error_list}")
-                    print(f"Error-Adjusted Success Rate: {np.sum(result_list)}/{num_games_evaluated - len(error_list)} = {np.sum(result_list) * 100/ (num_games_evaluated - len(error_list)):.2f}%")
-                    print(f"Remaining Games: {selected_games[num_games_evaluated:]}\n")
+                    print(f"Error-Adjusted Success Rate: {num_successes}/{num_games_no_error} = {100 * num_successes / num_games_no_error if num_games_no_error > 0 else 0:.2f}%")
+                    print(f"Remaining Games: {selected_games[num_games_evaluated:]}")
 
-                    if not selected_games[num_games_evaluated:]:
-                        break
+                    total_seconds = int(cumulative_runtime * 60)
+                    hours = total_seconds // 3600
+                    minutes = (total_seconds % 3600) // 60
+                    secs = total_seconds % 60
+                    print(f"Cumulative Runtime: {hours:02}:{minutes:02}:{secs:02}\n")
 
                     # Save result for this game
                     with open(log_paths['result_path'], "w") as f:
                         f.write(f"Success: {success}\n")
                         f.write(f"Chat Round: {chat_round_list[-1]}\n")
 
-                    with open(result_list_path, "w") as f:
-                        f.write(f"Success List: {result_list}\n")
-                        f.write(f"Chat Round List: {chat_round_list}\n")
+                    with open(log_paths['result_dict_path'], "w") as f:
+                        f.write(f"Result Dict: {result_dict}\n")
+
+                    if not selected_games[num_games_evaluated:]:
+                        break
 
                 # Final Success Summary
-                print(f"Final Success Rate: {np.sum(result_list)}/{num_games_to_evaluate}")
-                print(f"Final Error-Adjusted Success Rate: {np.sum(result_list)}/{num_games_to_evaluate - len(error_list)}")
+                print(f"Final Success Rate: {num_successes}/{num_games_evaluated} = {100 * success_rate:.2f}%")
+                print(f"Final Error-Adjusted Success Rate: {num_successes}/{num_games_no_error} = {100 * num_successes / num_games_no_error if num_games_no_error > 0 else 0:.2f}%")
 
     wandb.finish()
