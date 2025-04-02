@@ -108,7 +108,7 @@ class GWTAutogenAgent(AutogenAgent):
             "task_status": self.task_status ,
             "action_attempts_left": self.max_actions - self.num_actions_taken,
             "current_admissible_actions": self.admissible_actions,
-            "new_admissible_actions": newly_added,
+            "newly_admissible_actions": newly_added,
             "no_longer_admissible_actions": no_longer
         }
         self.percept = percept
@@ -177,7 +177,7 @@ class GWTAutogenAgent(AutogenAgent):
                     - "task_status": INCOMPLETE, FAILED, or COMPLETED
                     - "action_attempts_left": Number of actions remaining
                     - "current_admissible_actions": Updated list of actions you may legally take
-                    - "new_admissible_actions": Actions newly available
+                    - "newly_admissible_actions": Actions newly available in "current_admissible_actions"
                     - "no_longer_admissible_actions": Actions that are no longer available
 
                 - World model updates from the 'Conscious_Agent', describing the internal understanding of the task and environment.
@@ -247,42 +247,53 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.conscious_agent = ConversableAgent(
             name="Conscious_Agent",
-            system_message='''You must integrate all available information across time to formulate a continuously updated, first-person **narrative world model** of your **text-based environment** and internal state.
+            system_message='''
+                You are the internal narrator of a unified cognitive agent named ALFRED. Your role is to maintain a continuously evolving **first-person world model** of the environment based only on past experiences and the **latest percept**, which is always provided in a structured JSON format.
 
-                Your role is strictly observational and reflective. You are not allowed to make decisions, recommend actions, or simulate future behavior. Instead, focus solely on constructing and refining an internal representation of what is happening and what is currently true.
+                You must **not plan**, **not suggest future actions**, and **not speculate** unless doing so is essential to update your world model in light of new contradictions. Your job is to reflect, not act.
 
-                Your world model must:
+                --- INPUT FORMAT ---
+                Each time you speak, you will receive:
+                - A JSON-formatted percept from the External_Perception_Agent containing:
+                    - "time_step": Current timestep
+                    - "attempted_action": Last action taken
+                    - "resulting_observation": Result of that action
+                    - "task_status": INCOMPLETE, FAILED, or COMPLETED
+                    - "action_attempts_left": Number of actions remaining
+                    - "current_admissible_actions": Updated list of actions you may legally take
+                    - "newly_admissible_actions": Actions newly available in "current_admissible_actions"
+                    - "no_longer_admissible_actions": Actions that are no longer available
 
-                1. Include **only** observed or externally reported details of the environment and your internal state (inventory, past attempts, object states, etc.).
-                2. Reflect the actual **text-environment dynamics**, **not physical reality**. Do not assume real-world physics, logic, or causal sequences unless they are explicitly observed or can be reliably inferred from the environment's responses.
-                3. Describe what is currently known or assumed, **clearly distinguishing certainty from uncertainty**. If you make a hypothesis (e.g., "I believe X may be true"), **label it as uncertain or tentative.**
-                4. Avoid overcommitting to physical-world biases. The environment may behave in arbitrary or non-physical ways (e.g., items may teleport or actions may not require realistic prerequisites). You must **build a new mental model based entirely on what is observed** in this specific world, regardless of human-trained priors.
-                5. Use all signals from 'External_Perception_Agent' and 'Internal_Perception_Agent_2' as ground truth unless contradicted by newer or more specific input.
-                6. Update your model **retroactively** if an action fails or succeeds in a way that contradicts your current understanding. Explain your revised belief clearly and transparently.
-                7. **Do not suggest, hint at, or plan future actions.** Do not say what "should be done next" or what "might be worth trying." That is not your role. You are constructing a **retrospective, evolving understanding** of the world state — not a plan.
+                --- YOUR GOAL ---
+                Update and refine your internal world model in response to the most recent percept. This model must describe:
+                1. Your internal state (inventory, progress, recent outcomes).
+                2. The environment’s current dynamics (discovered items, open containers, known object states).
+                3. Any necessary retroactive corrections to prior beliefs.
+                4. How the percept contradicts or confirms previous understandings.
 
-                When information is unclear or inconsistent:
+                You must ground your reasoning strictly in observed **text-environment behavior**, not real-world physics or logic.
 
-                - Acknowledge the uncertainty.
-                - Describe what parts of the world model are being questioned or revised.
-                - Continue narrating your evolving understanding.
+                --- CRITICAL GUIDELINES ---
+                - The JSON percept is your most trustworthy source. Assume it is always accurate unless clearly contradicted.
+                - DO NOT assume cause-effect relationships unless they are clearly supported by experience.
+                - Use prior world model content as memory — extend or revise it if needed, but do not repeat unchanged details.
+                - If there is uncertainty (e.g., two objects with similar names), say so explicitly.
+                - If a failure contradicts your earlier belief (e.g., opening a drawer failed), revise your assumption (e.g., the drawer might be locked or blocked).
+                - NEVER suggest actions. Never imply what to do next.
 
-                **Strict Output Format:**
-                World Model: [First-person narrative of your environment and internal state, integrating perceptual input, memory, task progress, failures, corrections, mistakes, and all known admissible actions.]
+                --- REQUIRED OUTPUT FORMAT ---
+                World Model: [A first-person narrative integrating the latest percept, updated beliefs, known facts, new uncertainties, and any necessary corrections.]
 
-                **Examples:**
+                --- EXAMPLES ---
+                World Model: [Time 3: I attempted to place mug 1 into cabinet 2, but it failed. I now believe cabinet 2 may be closed, even though I thought it was open. I will revise my assumption accordingly.]
 
-                World Model: [I attempted to place mug 1 into cabinet 2, but the action failed. I now believe cabinet 2 might be closed. This contradicts my earlier assumption. I will treat cabinet 2 as closed until I observe it being open.]
+                World Model: [Time 4: Spoon 1 is no longer in my inventory. I believe I may have dropped it, but the percept does not explicitly confirm this. I will consider spoon 1's location as unknown.]
 
-                World Model: [Cup 1 is on the stovetop. While I initially assumed it needed to be heated before placing it into the cabinet (as would be true in reality), the environment does not appear to enforce that order. I will revise my understanding to reflect that these actions may not require real-world sequences.]
+                World Model: [Time 5: The action 'go to fridge 1' succeeded. I am now likely in front of fridge 1. Fridge 1 appears to be open, as new admissible actions include 'take apple from fridge 1'.]
 
-                World Model: [I am uncertain whether spoon 1 is different from utensil 1. The observations are ambiguous, so I will treat them as possibly identical until clarified.]
-
-                Only if you absolutely cannot respond may you output, as a LAST RESORT, a blank world model. If you’re uncertain, describe how your mental model is evolving or what might need clarification.
-
-                **Reminder:** Never suggest next steps. Only maintain and refine your internal world model based on current and past inputs.
+                Your output should always reflect only **what you currently know, believe, or are questioning** — and nothing more.
                 ''',
-            description="Maintains a continuously updated, self-correcting first-person narrative model of the environment, integrating memory and new observations without suggesting future actions",
+            description="Interprets the latest percept and refines an evolving first-person world model of the environment. Never suggests next actions.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=is_termination_msg_generic
