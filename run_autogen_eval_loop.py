@@ -158,17 +158,9 @@ if __name__ == "__main__":
                     print(f"\n[Running Game #{i}]")
                     print(f"Evaluation {num_games_evaluated} of {num_games_to_evaluate}")
 
-                    initial_message = (
-                        "You and all other Agents are collectively a singular conscious entity named ALFRED. " + agent.obs[0] +
-                        f"\nYou have a max of {agent.max_chat_round} chat rounds to complete the task; This is the maximum number of agent chat transitions the conversation can make before the environment terminates." +
-                        f"\nBeginning Task Status: INCOMPLETE" +
-                        f"\nMax actions to complete task: {agent.max_actions}" +
-                        f"\nBeginning Admissible Actions: {agent.admissible_actions}"
-                    )
-
                     start_time = time.time()
                     try:
-                        chat_result, error_message = agent.run_chat(initial_message)
+                        chat_result, error_message = agent.run_chat(agent.initial_message)
                     except Exception as e:
                         error_message = str(e)
                         chat_result = None

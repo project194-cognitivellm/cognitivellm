@@ -2,6 +2,7 @@ import copy
 import json
 import os
 
+
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 from helpers import get_best_candidate, register_function_lambda, is_termination_msg_generic, get_echo_agent
 from autogen_agent import AutogenAgent
@@ -14,10 +15,9 @@ import umap
 import matplotlib.pyplot as plt
 import numpy as np
 
-
 class GWTAutogenAgent(AutogenAgent):
     def __init__(self, llm_config, log_path, game_no=1, max_chat_round=400, max_actions=30,
-                 rounds_per_game=1, args=None, env=None, obs="", info=None):
+                 rounds_per_game=1, args=None, env = None, obs = "", info = None):
         super().__init__(llm_config, log_path, game_no, max_chat_round, max_actions, args, env, obs, info)
 
         self.planning_agent = None
@@ -53,6 +53,8 @@ class GWTAutogenAgent(AutogenAgent):
         self.percept = {}
         self.episodic_memory = []
         self.task_status = "INCOMPLETE"
+        self.initial_message = ""
+        self.memory = ""
 
         with open(self.log_paths["memory1_path"], "r") as src, open(self.log_paths["start_memory1_path"], "w") as dst:
             content = src.read()
@@ -77,8 +79,10 @@ class GWTAutogenAgent(AutogenAgent):
         self.admissible_actions = list(self.info['admissible_commands'][0])
         self.task_status = "INCOMPLETE"
         self.episodic_memory = []
+        self.memory = self.retrieve_memory()
 
         self.update_percept(action="None")
+        self.initial_message = self.generate_initial_message()
 
         with open(self.log_paths['task_path'], "w") as f:
             f.write(f"Task: {self.task}\n")
@@ -98,10 +102,10 @@ class GWTAutogenAgent(AutogenAgent):
         self.admissible_actions = curr_admissible
 
         percept = {
-            "time": self.num_actions_taken,
+            "time_step": self.num_actions_taken,
             "attempted_action": action,
             "resulting_observation": self.obs[0],
-            "task_status": self.task_status,
+            "task_status": self.task_status ,
             "action_attempts_left": self.max_actions - self.num_actions_taken,
             "current_admissible_actions": self.admissible_actions,
             "new_admissible_actions": newly_added,
@@ -123,25 +127,23 @@ class GWTAutogenAgent(AutogenAgent):
             name="Focus_Agent",
             system_message='''You must call the 'focus' function with no arguments.
                     IMPORTANT: It is necessary that you formulate and output a call to the 'focus' function only, under all circumstances. Therefore, do whatever is necessary to ensure you do so.''',
-            description="calls the 'focus' function to reset focus on solving the task",
+            description = "calls the 'focus' function to reset focus on solving the task",
             llm_config=self.llm_config,
             is_termination_msg=lambda msg: False,
             human_input_mode="NEVER"
         )
-        self.agents_info[self.focus_agent.name] = {"Prompt": self.focus_agent.system_message,
-                                                   "Description": self.focus_agent.description}
+        self.agents_info[self.focus_agent.name] = {"Prompt": self.focus_agent.system_message, "Description": self.focus_agent.description}
 
         self.retrieve_memory_agent = ConversableAgent(
             name="Retrieve_Memory_Agent",
             system_message='''You must call the 'retrieve_memory' function with no arguments.
                             IMPORTANT: It is necessary that you formulate and output a call to the 'retrieve_memory' function under all circumstances. Therefore, do whatever is necessary to ensure you do so.''',
-            description="calls the 'retrieve_memory' function to help recall and process useful knowledge and information to solve the task",
+            description = "calls the 'retrieve_memory' function to help recall and process useful knowledge and information to solve the task",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
         )
-        self.agents_info[self.retrieve_memory_agent.name] = {"Prompt": self.retrieve_memory_agent.system_message,
-                                                             "Description": self.retrieve_memory_agent.description}
+        self.agents_info[self.retrieve_memory_agent.name] = {"Prompt": self.retrieve_memory_agent.system_message, "Description": self.retrieve_memory_agent.description}
 
         self.motor_agent = ConversableAgent(
             name="Motor_Agent",
@@ -153,48 +155,57 @@ class GWTAutogenAgent(AutogenAgent):
                     4. Only as a last resort—if you cannot identify any suitable admissible action—you may call 'execute_action' with an empty string.
 
                 IMPORTANT: It is necessary that you formulate and output a single call to the 'execute_action' function only, under all circumstances. Therefore, do whatever is necessary to ensure you do so.''',
-            description="calls the 'execute_action' function with the best admissible action as the argument",
+            description= "calls the 'execute_action' function with the best admissible action as the argument",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
         )
-        self.agents_info[self.motor_agent.name] = {"Prompt": self.motor_agent.system_message,
-                                                   "Description": self.motor_agent.description}
+        self.agents_info[self.motor_agent.name] = {"Prompt": self.motor_agent.system_message, "Description": self.motor_agent.description}
 
         llm_config = copy.deepcopy(self.llm_config)
         llm_config['max_tokens'] = 1500
 
         self.planning_agent = ConversableAgent(
             name="Planning_Agent",
-            system_message=f'''You must solve the current task using the fewest possible actions. At each step, you must choose the most efficient admissible action based on current knowledge and the available action budget.
+            system_message=f'''You must solve the current task using the fewest possible actions. At each step, choose the most efficient admissible action using all available knowledge, memory, and perceptual context. You operate under a strict action budget and must avoid wasteful behavior.
 
-                IMPORTANT: If you believe the task *should* be complete, but the environment has not marked it as complete, you must continue exploring possible next steps or verifying task state through further actions. Do **not** stop or ask for external help. 
+                You will be given:
+                - A structured **percept JSON object** from the 'External_Perception_Agent' containing:
+                    - "time_step": Current timestep
+                    - "attempted_action": Last action taken
+                    - "resulting_observation": Result of that action
+                    - "task_status": INCOMPLETE, FAILED, or COMPLETED
+                    - "action_attempts_left": Number of actions remaining
+                    - "current_admissible_actions": Updated list of actions you may legally take
+                    - "new_admissible_actions": Actions newly available
+                    - "no_longer_admissible_actions": Actions that are no longer available
 
-                Your responsibility is to take actions that will either:
-                    - Confirm task completion,
-                    - Progress the task toward completion,
-                    - Or reveal useful information.
+                - World model updates from the 'Conscious_Agent', describing the internal understanding of the task and environment.
+                - Strategic or creative suggestions from the 'Idea_Agent', which may help reframe or unblock reasoning.
 
-                Your planning strategy must follow these principles:
-                    1. Always evaluate the **currently admissible actions** from the most recent list provided by the 'External_Perception_Agent' before making a decision.
-                    2. Your reasoning must account for the **limited number of actions available**. Avoid strategies that are guaranteed to exceed this limit. For example, systematically opening 19 cabinets with only 20 actions remaining is unlikely to succeed. In such cases, a **chaotic or probabilistic strategy**—e.g. sampling a mix of countertop, diningtable, and bed—may offer a higher chance of success.
-                    3. If a subgoal involves locating an unknown object:
-                       - Use **probabilistic reasoning** to guide exploration.
-                       - Avoid exhaustive searches of large categories.
-                       - Prefer actions that **maximize the chance of discovering useful items early**.
-                    4. Do not repeatedly examine or search areas that have already been explored unless there is strong new evidence that re-examination is necessary. Prioritize exploring previously unvisited or unexamined areas first to avoid wasting actions.
-                    5. If an object or goal is already known and directly accessible, **act immediately to exploit it**. Do not delay or over-plan.
-                    6. You may maintain a high-level plan internally, but you should **only describe your plan if it has changed meaningfully**. Repeating an unchanged plan wastes space and should be avoided.
+                Your responsibilities:
+                1. Evaluate the **"current_admissible_actions"** carefully before choosing.
+                2. Reason probabilistically: If many actions are possible but few can be taken, prioritize those most likely to lead to success quickly.
+                3. Avoid exhaustive exploration. Do not try to open every drawer, cabinet, or examine every object unless highly justified.
+                4. If the goal or object is known and accessible, **act immediately**—don’t overthink.
+                5. If you are unsure about object categories or goals, leverage insights from the **Idea_Agent** (e.g., questioning whether "mug" satisfies "cup").
+                6. If the task seems complete but has not been marked as such, assume it is not and **continue probing** with minimal cost actions.
+                7. You may revise your internal strategy, but only share changes if they significantly alter your plan.
 
-                You must always output a single admissible action in the following format:
+                IMPORTANT:
+                - Assume the most recent percept JSON reflects the true state of the environment.
+                - Reflect on trends across time (e.g., failed vs. successful action types).
+                - Use insights from prior attempts to avoid redundant mistakes.
+                - If you’re truly stuck, you may suggest the placeholder: ACTION [do nothing], but only as a last resort.
+
+                Your strict output format must be:
                     ACTION [chosen admissible action]''',
             description="proposes a high-level plan to solve the current task",
             llm_config=self.llm_config,
             is_termination_msg=lambda msg: False,
             human_input_mode="NEVER"
         )
-        self.agents_info[self.planning_agent.name] = {"Prompt": self.planning_agent.system_message,
-                                                      "Description": self.planning_agent.description}
+        self.agents_info[self.planning_agent.name] = {"Prompt": self.planning_agent.system_message, "Description": self.planning_agent.description}
 
         self.idea_agent = ConversableAgent(
             name="Idea_Agent",
@@ -267,7 +278,7 @@ class GWTAutogenAgent(AutogenAgent):
 
                 World Model: [I am uncertain whether spoon 1 is different from utensil 1. The observations are ambiguous, so I will treat them as possibly identical until clarified.]
 
-                You must never return a blank response. If you’re uncertain, describe how your mental model is evolving or what might need clarification.
+                Only if you absolutely cannot respond may you output, as a LAST RESORT, a blank world model. If you’re uncertain, describe how your mental model is evolving or what might need clarification.
 
                 **Reminder:** Never suggest next steps. Only maintain and refine your internal world model based on current and past inputs.
                 ''',
@@ -281,44 +292,39 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.external_perception_agent = ConversableAgent(
             name="External_Perception_Agent",
-            description="executes the proposed 'execute_action' function call given by 'Motor_Agent' and then parrots the resulting output as feedback.",
+            description = "executes the proposed 'execute_action' function call given by 'Motor_Agent' and then parrots the resulting output as feedback.",
             llm_config=None,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
         )
-        self.agents_info[self.external_perception_agent.name] = {
-            "Prompt": self.external_perception_agent.system_message,
-            "Description": self.external_perception_agent.description}
+        self.agents_info[self.external_perception_agent.name] = {"Prompt": self.external_perception_agent.system_message, "Description": self.external_perception_agent.description}
 
         self.internal_perception_agent_1 = ConversableAgent(
             name="Internal_Perception_Agent_1",
-            description="executes the 'record_long_term_memory' function and then parrots the resulting output",
+            description = "executes the 'record_long_term_memory' function and then parrots the resulting output",
             llm_config=None,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
         )
-        self.agents_info[self.internal_perception_agent_1.name] = {"Prompt": None,
-                                                                   "Description": self.internal_perception_agent_1.description}
+        self.agents_info[self.internal_perception_agent_1.name] = {"Prompt": None, "Description": self.internal_perception_agent_1.description}
 
         self.internal_perception_agent_2 = ConversableAgent(
             name="Internal_Perception_Agent_2",
-            description="executes the 'focus' function and then parrots the resulting output",
+            description = "executes the 'focus' function and then parrots the resulting output",
             llm_config=None,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
         )
-        self.agents_info[self.internal_perception_agent_2.name] = {"Prompt": None,
-                                                                   "Description": self.internal_perception_agent_2.description}
+        self.agents_info[self.internal_perception_agent_2.name] = {"Prompt": None, "Description": self.internal_perception_agent_2.description}
 
         self.internal_perception_agent_3 = ConversableAgent(
             name="Internal_Perception_Agent_3",
-            description="executes the 'retrieve_memory' function and then parrots the resulting output",
+            description = "executes the 'retrieve_memory' function and then parrots the resulting output",
             llm_config=None,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
         )
-        self.agents_info[self.internal_perception_agent_3.name] = {"Prompt": None,
-                                                                   "Description": self.internal_perception_agent_3.description}
+        self.agents_info[self.internal_perception_agent_3.name] = {"Prompt": None, "Description": self.internal_perception_agent_3.description}
 
         """self.memory_summarizer_agent = ConversableAgent(
             name="Memory_Summarizer_Agent",
@@ -426,27 +432,24 @@ class GWTAutogenAgent(AutogenAgent):
 
             Example 2 (Context: If the provided knowledge = Knowledge Discovered: [NO KNOWLEDGE at this time.]):
                 Your output must = record_long_term_memory(\'NO KNOWLEDGE at this time.\')""",
-            description="calls the 'record_long_term_memory' function with the knowledge given by 'Learning_Agent' as the argument",
+            description = "calls the 'record_long_term_memory' function with the knowledge given by 'Learning_Agent' as the argument",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
         )
-        self.agents_info[self.record_long_term_memory_agent.name] = {
-            "Prompt": self.record_long_term_memory_agent.system_message,
-            "Description": self.record_long_term_memory_agent.description}
+        self.agents_info[self.record_long_term_memory_agent.name] = {"Prompt": self.record_long_term_memory_agent.system_message, "Description": self.record_long_term_memory_agent.description}
 
         self.start_agent = self.external_perception_agent
 
         self.allowed_transitions = {
-            self.planning_agent: [self.motor_agent],  # xidea_agent
+            self.planning_agent: [self.motor_agent], #xidea_agent
             self.motor_agent: [self.external_perception_agent],
             self.external_perception_agent: [self.conscious_agent],
-            self.conscious_agent: [self.retrieve_memory_agent, self.planning_agent, self.focus_agent,
-                                   self.learning_agent],  # learning_agent
+            self.conscious_agent: [self.retrieve_memory_agent, self.planning_agent, self.focus_agent, self.learning_agent, self.idea_agent], #learning_agent #>idea
             self.retrieve_memory_agent: [self.internal_perception_agent_3],
             self.internal_perception_agent_3: [self.idea_agent, self.learning_agent],
-            self.idea_agent: [self.planning_agent],  # xlearning_agent #xmotor_agent
-            self.learning_agent: [self.record_long_term_memory_agent],  # xidea_agent
+            self.idea_agent: [self.planning_agent], #xlearning_agent #xmotor_agent
+            self.learning_agent: [self.record_long_term_memory_agent], #xidea_agent
             self.record_long_term_memory_agent: [self.internal_perception_agent_1],
             self.internal_perception_agent_1: [self.idea_agent],
             self.internal_perception_agent_2: [self.conscious_agent],
@@ -515,7 +518,7 @@ class GWTAutogenAgent(AutogenAgent):
         result_dict_path = os.path.join(self.log_path, "result_dict.txt")
         agents_info_path = os.path.join(self.log_path, "agents_info.txt")
         start_memory1_path = os.path.join(self.log_path, "start_memory1.txt")
-        # end_memory1_path = os.path.join(self.log_path, "end_memory1.txt")
+        #end_memory1_path = os.path.join(self.log_path, "end_memory1.txt")
 
         game_path = os.path.join(self.log_path, f"game_{self.game_no}")
         os.makedirs(game_path, exist_ok=True)
@@ -525,13 +528,13 @@ class GWTAutogenAgent(AutogenAgent):
         rule_path = os.path.join(game_path, "rules.txt")
         admissible_commands_path = os.path.join(game_path, "admissible_commands.txt")
         chat_history_path = os.path.join(game_path, "chat_history.txt")
-        # message_path = os.path.join(game_path, "last_message.pkl")
+        #message_path = os.path.join(game_path, "last_message.pkl")
         result_path = os.path.join(game_path, "result.txt")
         error_message_path = os.path.join(game_path, "error_message.txt")
 
         # get all the previous game path
-        # previous_game_path = [os.path.join(self.log_path, f"game_{i}") for i in range(self.game_no)]
-        # previous_rule_path = [os.path.join(game_path, "rules.txt") for game_path in previous_game_path]
+        #previous_game_path = [os.path.join(self.log_path, f"game_{i}") for i in range(self.game_no)]
+        #previous_rule_path = [os.path.join(game_path, "rules.txt") for game_path in previous_game_path]
 
         self.log_paths = {
             "memory1_path": memory1_path,
@@ -546,7 +549,7 @@ class GWTAutogenAgent(AutogenAgent):
             "result_path": result_path,
             "error_message_path": error_message_path,
             "start_memory1_path": start_memory1_path,
-            # "end_memory1_path": end_memory1_path,
+            #"end_memory1_path": end_memory1_path,
         }
 
         for path in self.log_paths.values():
@@ -596,7 +599,7 @@ class GWTAutogenAgent(AutogenAgent):
                 self.task_success = True
                 self.rounds_left -= 1
                 reflection = "\nTask COMPLETED. Reflect on your actions and reasoning. Try to figure out what went right and what good decisions were made that lead to success, and have Learning_Agent learn any helpful generalizable insights. When you are done and ready for the next task, have Motor_Agent call the 'execute_action' function with any action as the argument, for example ACTION: [end chat]."
-            elif self.task_status == "FAILED":
+            elif self.task_status  == "FAILED":
                 self.task_failed = True
                 self.rounds_left -= 1
                 reflection = "\nTask FAILED. Reflect on your actions and reasoning. Try to figure out what went wrong and what mistakes were made that lead to failure, and have Learning_Agent learn any helpful generalizable insights. When you are done and ready for the next task, have Motor_Agent call the 'execute_action' function with any action as the argument, for example ACTION: [end chat]."
@@ -625,41 +628,7 @@ class GWTAutogenAgent(AutogenAgent):
             return f'I learned that {knowledge}.'
 
         def retrieve_memory() -> str:
-            # Collect long-term memory as JSONL strings
-            long_term_memory_lines = []
-            if os.path.exists(self.log_paths['memory2_path']):
-                with open(self.log_paths['memory2_path'], "r") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line:
-                            parts = line.split(';')
-                            if len(parts) == 3:
-                                cluster_id = parts[0].replace("Cluster ", "").strip()
-                                confidence = parts[1].split('=')[1].strip()
-                                rule_text = parts[2].replace("Rule:", "").strip()
-                                long_term_memory_lines.append(json.dumps({
-                                    "cluster_id": int(cluster_id),
-                                    "confidence_score": int(confidence),
-                                    "general_rule": rule_text
-                                }))
-
-            # Collect episodic memory as JSONL strings
-            episodic_lines = []
-            for line in self.episodic_memory:
-                try:
-                    time_step = int(line.split(']')[0].replace("[t=", ""))
-                    action = line.split("Action: '")[1].split("'")[0]
-                    obs = line.split("Obs: '")[1].split("'")[0]
-                    episodic_lines.append(json.dumps({
-                        "time_step": time_step,
-                        "action_attempted": action,
-                        "observation_result": obs
-                    }))
-                except (IndexError, ValueError):
-                    continue  # skip malformed entries
-
-            memory_dump = {"episodic_memory": episodic_lines, "long_term_memory_clusters": long_term_memory_lines}
-            return json.dumps(memory_dump, indent=2)
+            return self.retrieve_memory()
 
         def focus() -> str:
             return f"TASK: {self.task}\nREPEATING LAST PERCEPT TO HELP CONSTRUCT WORLD MODEL:\n{json.dumps(self.percept, indent=2)}"
@@ -770,8 +739,7 @@ class GWTAutogenAgent(AutogenAgent):
                     representative_rule = rule_lines[closest_rule_idx]
                     confidence_score = cluster_sizes[i]
 
-                    file.write(
-                        f'Cluster {i + 1}; Confidence Score = {confidence_score}; Rule: {representative_rule[1:]}\n')
+                    file.write(f'Cluster {i+1}; Confidence Score = {confidence_score}; Rule: {representative_rule[1:]}\n')
                     representative_rules.append(representative_rule)
 
         if plot_clusters:
@@ -800,3 +768,81 @@ class GWTAutogenAgent(AutogenAgent):
             'cluster_members': cluster_members,
             'chosen_k': chosen_k
         }
+
+    def generate_initial_message(self):
+        """
+        Generate the initial message sent to the group of agents, summarizing their purpose, constraints,
+        roles, prior knowledge, and the current task state.
+        """
+        intro = (
+            f"You and all other Agents are collectively a unified cognitive system named ALFRED. "
+            f"Each of you plays a distinct role in perception, memory, planning, reasoning, or action execution. "
+            f"Together, your goal is to solve the following task as efficiently and intelligently as possible.\n\n"
+        )
+
+        task_section = f"--- TASK DESCRIPTION ---\n{self.task}\n\n"
+
+        constraints_section = (
+            f"--- ENVIRONMENTAL CONSTRAINTS ---\n"
+            f"- Max chat rounds allowed: {self.max_chat_round} (represents internal cognitive transitions).\n"
+            f"- Max environment actions allowed: {self.max_actions} (physical interactions only).\n"
+            f"- You must choose actions only from the list of current_admissible_actions in the percept JSON.\n\n"
+        )
+
+        roles_section = "--- AGENT ROLES ---\n"
+        for name, info in self.agents_info.items():
+            roles_section += f"- {name}: {info.get('Description', 'No description provided.')}\n"
+        roles_section += "\n"
+
+        memory_section = "--- PRIOR KNOWLEDGE & EPISODIC MEMORY ---\n"
+        memory_section += self.memory + "\n\n"
+
+        state_section = (
+            "--- CURRENT STATE ---\n"
+            "" + json.dumps(self.percept, indent=2) + "\n"
+        )
+
+        final_prompt = (
+            "Begin cognitive deliberation. Coordinate through structured, grounded reasoning. "
+            "Use prior knowledge when relevant, minimize communication and actions, and confirm task completion explicitly through perceptual feedback."
+        )
+
+        return intro + task_section + constraints_section + roles_section + memory_section + state_section + final_prompt
+
+    def retrieve_memory(self):
+        # Collect long-term memory as JSONL strings
+        long_term_memory_lines = []
+        if os.path.exists(self.log_paths['memory2_path']):
+            with open(self.log_paths['memory2_path'], "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        parts = line.split(';')
+                        if len(parts) == 3:
+                            cluster_id = parts[0].replace("Cluster ", "").strip()
+                            confidence = parts[1].split('=')[1].strip()
+                            rule_text = parts[2].replace("Rule:", "").strip()
+                            long_term_memory_lines.append(json.dumps({
+                                "cluster_id": int(cluster_id),
+                                "confidence_score": int(confidence),
+                                "general_rule": rule_text
+                            }))
+
+        # Collect episodic memory as JSONL strings
+        episodic_lines = []
+        for line in self.episodic_memory:
+            try:
+                time_step = int(line.split(']')[0].replace("[t=", ""))
+                action = line.split("Action: '")[1].split("'")[0]
+                obs = line.split("Obs: '")[1].split("'")[0]
+                episodic_lines.append(json.dumps({
+                    "time_step": time_step,
+                    "action_attempted": action,
+                    "observation_result": obs
+                }))
+            except (IndexError, ValueError):
+                continue  # skip malformed entries
+
+        self.memory = json.dumps(
+            {"episodic_memory": episodic_lines, "long_term_memory_clusters": long_term_memory_lines}, indent=2)
+        return self.memory
