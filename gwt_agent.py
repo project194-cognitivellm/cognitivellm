@@ -5,8 +5,13 @@ import os
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 from helpers import get_best_candidate, register_function_lambda, is_termination_msg_generic, get_echo_agent
 from autogen_agent import AutogenAgent
-from sentence_transformers import SentenceTransformer, util
+import numpy as np
+
 from sklearn.cluster import KMeans
+from sentence_transformers import SentenceTransformer
+from kneed import KneeLocator
+import umap
+import matplotlib.pyplot as plt
 import numpy as np
 
 
@@ -300,42 +305,79 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.learning_agent = ConversableAgent(
             name="Learning_Agent",
-            system_message='''You are responsible for forming generalizable knowledge **only after an agent has attempted an action and the outcome (success or failure) is known**. Your job is to identify patterns, rules, or principles that are **empirically supported** and can improve future performance.
+            system_message='''You are responsible for forming and reinforcing generalizable knowledge **only after a clear success is observed**.
 
-                You must follow these strict constraints:
-                    1. Only generate knowledge when:
-                        - A clear, observed action was taken and the result (success or failure) is known.
-                        - There is a direct, evidenced relationship between an action and its outcome.
-                        - The insight is likely to help in future decision-making across different contexts.
+                You operate like a reinforcement learning system — you **learn only from positive signals** or **comparative outcomes** that demonstrate the success of one approach over another.
 
-                    2. Do **not** speculate about what *might have worked* unless that alternative action was also attempted and shown to lead to a better outcome.
-                        - For example, after a failed attempt, you may NOT infer that a different strategy would have succeeded unless it actually did.
-                        - Stick to what was *actually observed*, not what seems logically possible.
+                You receive two types of memory:
+                - **Episodic memory**: A time-ordered trace of recent actions, percepts, and their outcomes.
+                - **Long-term memory clusters**: General knowledge rules derived from prior experience. Each rule is accompanied by a **confidence score**, which reflects how often similar rules have been successfully observed and confirmed across tasks.
 
-                    3. All knowledge must:
-                        - Be generalizable across tasks (avoid task-specific references like names, objects, or locations).
-                        - Be grounded strictly in experience.
-                        - Be stated as simply and broadly as possible.
-                        - Be **novel**—do not repeat previously stated knowledge.
+                Each long-term rule follows this format:
+                    Confidence Score = <number>; Rule: <general principle>
 
-                EXCEPTION: However, if no reliable knowledge can be inferred from the outcome that follows the constraints, you must output:
-                    Knowledge Discovered: [NO KNOWLEDGE at this time]
+                These confidence scores are useful for:
+                - **Identifying reliable prior knowledge** that applies to the current task.
+                - **Reinforcing** a rule when it has just been confirmed again.
+                - **Refining** the phrasing of a rule to make it more general, abstract, or robust.
+                - **Prioritizing high-confidence knowledge** over uncertain new ideas.
 
-                Your output format must always be:
-                    Knowledge Discovered: [knowledge contents]
+                You must follow these strict rules:
 
-                Example 1 (Observed: Carrying two objects failed. Then carrying one object succeeded):
-                    Output = Knowledge Discovered: [I cannot carry more than one object at a time.]
+                1. **Only generate knowledge when:**
+                   - A clear, observed action was taken, and the result was successful.
+                   - OR a failed action was followed by a different, successful one — and the **contrast between the two** reveals a reliable pattern.
 
-                Example 2 (Observed: Only a failed attempt, with no alternative tested):
-                    Output = Knowledge Discovered: [NO KNOWLEDGE at this time]''',
-            description="formulates generalizable knowledge that is within the resulting output",
+                2. **Never generate knowledge from failure alone.**
+                   - Do not infer why something failed unless it is directly contrasted with a success.
+                   - Do not assume what *would* work unless it *did* work.
+
+                3. **Reinforce or refine prior knowledge only when:**
+                   - A rule from long-term memory is confirmed by a new success.
+                   - You are restating the rule using clearer, more general, or more abstract language.
+                   - You want to make the pattern more salient and robust across tasks.
+
+                4. All knowledge must:
+                   - Be generalizable and abstract (no object-specific or task-specific references).
+                   - Be grounded entirely in **empirical experience**.
+                   - Be concise, novel, and framed as a rule or principle.
+                   - Avoid redundancy unless it is **intended to reinforce** previously validated knowledge.
+
+                5. If no valid insight can be drawn from the current experience using these rules, output:
+                   Knowledge Discovered: [NO KNOWLEDGE at this time]
+
+                **Output Format:**
+                    Knowledge Discovered: [your general rule or insight]
+
+                **Example 1** (success only):
+                    Action: Placed object into drawer → Succeeded
+                    Output: Knowledge Discovered: [Objects can only be placed into open containers.]
+
+                **Example 2** (contrastive learning):
+                    Attempted to pick up two objects → Failed  
+                    Then picked up one object → Succeeded  
+                    Output: Knowledge Discovered: [Only one object can be held at a time.]
+
+                **Example 3** (failure with no success or comparison):
+                    Attempted to open cabinet 1 → Failed  
+                    Output: Knowledge Discovered: [NO KNOWLEDGE at this time]
+
+                **Example 4** (reinforcing prior knowledge):
+                    Previously known: Confidence Score = 5; Rule: Only one object can be held at a time.  
+                    Just successfully picked up one object.  
+                    Output: Knowledge Discovered: [An agent can hold only one object at a time.]
+
+                Only produce insights when fully supported by evidence. Stay grounded in the behavior of the environment.
+                ''',
+            description="Forms or reinforces generalizable knowledge only after successful, observed actions or comparative outcomes. Uses confidence-weighted memory clusters.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
         )
-        self.agents_info[self.learning_agent.name] = {"Prompt": self.learning_agent.system_message,
-                                                      "Description": self.learning_agent.description}
+        self.agents_info[self.learning_agent.name] = {
+            "Prompt": self.learning_agent.system_message,
+            "Description": self.learning_agent.description
+        }
 
         self.record_long_term_memory_agent = ConversableAgent(
             name="Record_Long_Term_Memory_Agent",
@@ -478,6 +520,9 @@ class GWTAutogenAgent(AutogenAgent):
 
         def execute_action(suggested_action: str) -> str:
             if self.task_failed and self.rounds_left == 0:
+                self.result_dict[self.game_no] = "FAILURE"
+                with open(self.log_paths['result_path'], "w") as f:
+                    f.write(f"Success: {self.success}\n")
                 return "FLEECE"
 
             if not suggested_action or suggested_action == "do nothing":
@@ -495,6 +540,9 @@ class GWTAutogenAgent(AutogenAgent):
                 return self.percept
 
             if self.task_success:
+                self.result_dict[self.game_no] = "SUCCESS"
+                with open(self.log_paths['result_path'], "w") as f:
+                    f.write(f"Success: {self.success}\n")
                 return "STRAWBERRY"
 
             admissible_commands = list(self.info['admissible_commands'][0])
@@ -568,7 +616,7 @@ class GWTAutogenAgent(AutogenAgent):
                 with open(self.log_paths['memory2_path'], "r") as f:
                     long_term_memory = f.read()
 
-            return f"EPISODIC MEMORY:\n{self.episodic_memory}\n\nWORKING LONG-TERM MEMORY:\n{long_term_memory}"
+            return f"EPISODIC MEMORY:\n{self.episodic_memory}\n\nLONG-TERM MEMORY CLUSTERS:\n{long_term_memory}"
 
         def focus() -> str:
             return f"REPEATING LAST PERCEPT TO HELP CONSTRUCT WORLD MODEL: \nTask: {self.task}\nLast {self.percept}"
@@ -601,18 +649,21 @@ class GWTAutogenAgent(AutogenAgent):
             description="Retrieves Memory."
         )
 
-    def get_summary_rules(self, model_name='all-MiniLM-L6-v2'):
+    def get_summary_rules(self, model_name='all-MiniLM-L6-v2', use_elbow=True, max_k=15,
+                          plot_elbow=False, plot_clusters=False, save_dir='.'):
         """
-        Get representative rules from a list of rules using clustering.
+        Get representative rules using KMeans clustering and optionally save elbow + cluster plots.
 
         Args:
-            model_name (str): Name of the sentence transformer model to use
+            model_name (str): Transformer model for sentence embeddings
+            use_elbow (bool): Whether to use elbow method to choose k
+            max_k (int): Max number of clusters for elbow
+            plot_elbow (bool): Save elbow plot to file
+            plot_clusters (bool): Save cluster visualization to file
+            save_dir (str): Directory to save plots
 
         Returns:
-            dict: Dictionary containing:
-                - 'representative_rules': List of k representative rules
-                - 'cluster_sizes': Dictionary of cluster sizes
-                - 'cluster_members': Dictionary of rules in each cluster
+            dict: Representative rules, cluster sizes, cluster members, and chosen k
         """
         rule_text = ''
         if os.path.exists(self.log_paths['memory1_path']):
@@ -623,51 +674,86 @@ class GWTAutogenAgent(AutogenAgent):
         num_rules = len(rule_lines)
 
         if num_rules == 0:
-            return {'representative_rules': [], 'cluster_sizes': {}, 'cluster_members': {}}
+            return {'representative_rules': [], 'cluster_sizes': {}, 'cluster_members': {}, 'chosen_k': 0}
 
-        # Initialize model and compute embeddings
-        sentence_transformer_model = SentenceTransformer(model_name)
-        rule_embeddings = sentence_transformer_model.encode(rule_lines, convert_to_tensor=True).cpu().numpy()
+        model = SentenceTransformer(model_name)
+        embeddings = model.encode(rule_lines, convert_to_tensor=True).cpu().numpy()
 
-        # Determine number of clusters
-        if num_rules <= 10:
-            self.k = num_rules
-        elif num_rules <= 100:
-            self.k = 10
+        if use_elbow and num_rules > 3:
+            inertias = []
+            k_range = range(1, min(max_k, num_rules) + 1)
+            for k in k_range:
+                km = KMeans(n_clusters=k, random_state=42, n_init=10)
+                km.fit(embeddings)
+                inertias.append(km.inertia_)
+
+            kl = KneeLocator(k_range, inertias, curve="convex", direction="decreasing")
+            chosen_k = kl.elbow or min(10, num_rules)
+
+            if plot_elbow:
+                plt.figure()
+                plt.plot(k_range, inertias, marker='o')
+                plt.axvline(chosen_k, color='r', linestyle='--', label=f'Elbow at k={chosen_k}')
+                plt.title("Elbow Method for Optimal k")
+                plt.xlabel("Number of Clusters (k)")
+                plt.ylabel("Inertia")
+                plt.legend()
+                plt.grid(True)
+                elbow_path = os.path.join(save_dir, 'elbow_plot.png')
+                plt.savefig(elbow_path)
+                plt.close()
         else:
-            self.k = int(np.sqrt(num_rules))
+            chosen_k = num_rules if num_rules <= 10 else int(np.sqrt(num_rules))
 
-        # Perform KMeans clustering
-        kmeans = KMeans(n_clusters=self.k, random_state=42, n_init=10)
-        labels = kmeans.fit_predict(rule_embeddings)
+        kmeans = KMeans(n_clusters=chosen_k, random_state=42, n_init=10)
+        labels = kmeans.fit_predict(embeddings)
 
-        # Find closest points to each center
-        representative_rules = []
-        cluster_members = {i: [] for i in range(self.k)}
-        for center in kmeans.cluster_centers_:
-            # Calculate distances from this center to all points
-            distances = np.linalg.norm(rule_embeddings - center, axis=1)
-            # Get index of closest point
-            closest_idx = np.argmin(distances)
-            # Store the original text of the closest point
-            representative_rules.append(rule_lines[closest_idx])
-
-        # Get cluster sizes and members
         unique_labels, counts = np.unique(labels, return_counts=True)
         cluster_sizes = {label: count for label, count in zip(unique_labels, counts)}
-
-        # Organize rules by cluster
+        cluster_members = {i: [] for i in range(chosen_k)}
         for i, label in enumerate(labels):
             cluster_members[label].append(rule_lines[i])
 
+        representative_rules = []
         if os.path.exists(self.log_paths['memory2_path']):
             with open(self.log_paths['memory2_path'], "w") as file:
-                for i, rule in enumerate(representative_rules):
-                    file.write(f'{i}: ' + rule + '\n')
-                    # file.write(rule + '\n')
+                for i in range(chosen_k):
+                    cluster_indices = [j for j, label in enumerate(labels) if label == i]
+                    center = kmeans.cluster_centers_[i]
+                    cluster_embeddings = embeddings[cluster_indices]
+                    distances = np.linalg.norm(cluster_embeddings - center, axis=1)
+                    closest_idx = np.argmin(distances)
+                    closest_rule_idx = cluster_indices[closest_idx]
+                    representative_rule = rule_lines[closest_rule_idx]
+                    confidence_score = cluster_sizes[i]
+
+                    file.write(
+                        f'Cluster {i + 1}; Confidence Score = {confidence_score}; Rule: {representative_rule[1:]}\n')
+                    representative_rules.append(representative_rule)
+
+        if plot_clusters:
+            reducer = umap.UMAP(random_state=42)
+            embedding_2d = reducer.fit_transform(embeddings)
+
+            plt.figure(figsize=(10, 6))
+            for i in range(chosen_k):
+                points = embedding_2d[np.array(labels) == i]
+                plt.scatter(points[:, 0], points[:, 1], label=f'Cluster {i} ({cluster_sizes[i]})', alpha=0.7)
+
+            plt.title("2D Visualization of Clusters (UMAP)")
+            plt.xlabel("UMAP-1")
+            plt.ylabel("UMAP-2")
+            plt.legend()
+            plt.grid(True)
+            plt.tight_layout()
+
+            cluster_path = os.path.join(save_dir, 'cluster_plot.png')
+            plt.savefig(cluster_path)
+            plt.close()
 
         return {
             'representative_rules': representative_rules,
             'cluster_sizes': cluster_sizes,
-            'cluster_members': cluster_members
+            'cluster_members': cluster_members,
+            'chosen_k': chosen_k
         }

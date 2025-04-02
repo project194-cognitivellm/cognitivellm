@@ -1,4 +1,6 @@
 import os
+import re
+import json
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import argparse
@@ -119,7 +121,6 @@ if __name__ == "__main__":
                 error_list = []
                 success_list = []
                 failure_list = []
-                result_dict = {}
 
                 # Track metrics
                 cumulative_successful_actions = 0
@@ -197,13 +198,33 @@ if __name__ == "__main__":
                         with open(log_paths['chat_history_path'], "w") as f:
                             f.write("Error Message: no chat history in chat result\n")
 
+                    transition_pattern = r"name: [\w_]+"
+                    transitions = []
+
+                    # Read the chat history to extract transitions
+                    with open(log_paths['chat_history_path'], "r") as f:
+                        chat_text = f.read()
+
+                    matches = re.findall(transition_pattern, chat_text)
+                    for idx in range(len(matches) - 1):
+                        transitions.append({
+                            "from": matches[idx],
+                            "to": matches[idx + 1],
+                            "step": idx
+                        })
+
+                    # Save transitions to file
+                    transition_path = os.path.join(os.path.dirname(log_paths['chat_history_path']),
+                                                   "transition_log.json")
+                    with open(transition_path, "w") as f:
+                        json.dump(transitions, f, indent=2)
+
                     # Evaluate and log success
                     elapsed_minutes = (end_time - start_time) / 60
                     cumulative_runtime += elapsed_minutes
                     num_games_no_error = num_games_evaluated - len(error_list)
 
                     success = agent.success
-                    result_dict[i] = success
                     if success:
                         num_successes += 1
                         success_list.append(i)
@@ -262,14 +283,6 @@ if __name__ == "__main__":
                     minutes = (total_seconds % 3600) // 60
                     secs = total_seconds % 60
                     print(f"Cumulative Runtime: {hours:02}:{minutes:02}:{secs:02}\n")
-
-                    # Save result for this game
-                    with open(log_paths['result_path'], "w") as f:
-                        f.write(f"Success: {success}\n")
-                        f.write(f"Chat Round: {chat_round_list[-1]}\n")
-
-                    with open(log_paths['result_dict_path'], "w") as f:
-                        f.write(f"Result Dict: {result_dict}\n")
 
                     if not selected_games[num_games_evaluated:]:
                         break

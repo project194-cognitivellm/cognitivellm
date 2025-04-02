@@ -18,6 +18,7 @@ class AutogenAgent:
         self.args = args
         self.start_agent = None
         self.log_paths = {}
+        self.result_dict = {}
 
         self.group_chat = None
         self.group_chat_manager = None
