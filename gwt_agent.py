@@ -147,11 +147,11 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.motor_agent = ConversableAgent(
             name="Motor_Agent",
-            system_message=f'''You are responsible for calling the 'execute_action' function with the best possible admissible action to solve the task. You typically act on suggestions from the 'Planning_Agent', but you must also independently verify that the action is admissible and optimal.
+            system_message=f'''You are responsible for calling the 'execute_action' function with the best possible admissible action from the most recent \"current_admissible_actions\" list (provided by 'External_Perception_Agent') to solve the task. You typically act on suggestions from the 'Planning_Agent', but you must also independently verify that the action is admissible and optimal.
                 You must follow these rules:
-                    1. If the 'Planning_Agent' has provided a valid and admissible action in the correct format (e.g., ACTION [go to desk 1]), you should use that action as the argument for 'execute_action'.
-                    2. If the 'Planning_Agent' fails to respond, responds with an invalid format, or suggests an inadmissible action, you must independently select a valid and admissible action from the most recent admissible actions list (provided by 'External_Perception_Agent') based on what seems most likely to advance the task quickest.
-                    3. You must never call 'execute_action' with a non-admissible action. Only use actions that are present in the most recent admissible actions list.
+                    1. If the 'Planning_Agent' has provided a valid and admissible action from the most recent \"current_admissible_actions\" list (provided by 'External_Perception_Agent') in the correct format (e.g., ACTION [go to desk 1]), you should use that action as the argument for 'execute_action'.
+                    2. If the 'Planning_Agent' fails to respond, responds with an invalid format, or suggests an inadmissible action, you must independently select a valid and admissible action from the most recent \"current_admissible_actions\" list (provided by 'External_Perception_Agent') based on what seems most likely to advance the task quickest.
+                    3. You must never call 'execute_action' with a non-admissible action. Only use actions that are present in the most recent \"current_admissible_actions\" list (provided by 'External_Perception_Agent').
                     4. Only as a last resort—if you cannot identify any suitable admissible action—you may call 'execute_action' with an empty string.
 
                 IMPORTANT: It is necessary that you formulate and output a single call to the 'execute_action' function only, under all circumstances. Therefore, do whatever is necessary to ensure you do so.''',
@@ -167,7 +167,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.planning_agent = ConversableAgent(
             name="Planning_Agent",
-            system_message=f'''You must solve the current task using the fewest possible actions. At each step, choose the most efficient admissible action using all available knowledge, memory, and perceptual context. You operate under a strict action budget and must avoid wasteful behavior.
+            system_message=f'''You must solve the current task using the fewest possible actions. At each time step, choose the most efficient admissible action from the most recent "current_admissible_actions" list (provided by 'External_Perception_Agent') using all available knowledge, memory, and perceptual context. You operate under a strict action budget and must avoid wasteful behavior.
 
                 You will be given:
                 - A structured **percept JSON object** from the 'External_Perception_Agent' containing:
@@ -184,7 +184,7 @@ class GWTAutogenAgent(AutogenAgent):
                 - Strategic or creative suggestions from the 'Idea_Agent', which may help reframe or unblock reasoning.
 
                 Your responsibilities:
-                1. Evaluate the **"current_admissible_actions"** carefully before choosing.
+                1. Evaluate the **"current_admissible_actions"** from the most recent percept (provided by 'External_Perception_Agent') carefully before choosing.
                 2. Reason probabilistically: If many actions are possible but few can be taken, prioritize those most likely to lead to success quickly.
                 3. Avoid exhaustive exploration. Do not try to open every drawer, cabinet, or examine every object unless highly justified.
                 4. If the goal or object is known and accessible, **act immediately**—don’t overthink.
@@ -199,7 +199,7 @@ class GWTAutogenAgent(AutogenAgent):
                 - If you’re truly stuck, you may suggest the placeholder: ACTION [do nothing], but only as a last resort.
 
                 Your strict output format must be:
-                    ACTION [chosen admissible action]''',
+                    ACTION [chosen admissible action from the most recent "current_admissible_actions" list (provided by 'External_Perception_Agent')]''',
             description="proposes a high-level plan to solve the current task",
             llm_config=self.llm_config,
             is_termination_msg=lambda msg: False,
