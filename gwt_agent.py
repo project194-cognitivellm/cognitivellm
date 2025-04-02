@@ -50,8 +50,9 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.task = ""
         self.admissible_actions = []
-        self.percept = ""
-        self.episodic_memory = ""
+        self.percept = {}
+        self.episodic_memory = []
+        self.task_status = "INCOMPLETE"
 
         with open(self.log_paths["memory1_path"], "r") as src, open(self.log_paths["start_memory1_path"], "w") as dst:
             content = src.read()
@@ -74,12 +75,11 @@ class GWTAutogenAgent(AutogenAgent):
         self.success = False
         self.task = obs[0].split("Your task is to: ")[1]
         self.admissible_actions = list(self.info['admissible_commands'][0])
-        self.percept = f"Observation: {self.obs[0]}\nYou have a max of {self.max_chat_round} chat rounds to complete the task; This is the maximum number of agent chat transitions the conversation can make before the environment terminates.\nTask Status: INCOMPLETE\nActions Left: {self.max_actions - self.num_actions_taken}\nCurrent Admissible Actions: {list(self.info['admissible_commands'][0])}"
-        self.episodic_memory = f"Time {self.num_actions_taken}: " + "You and all other Agents are collectively a singular conscious entity named ALFRED. " + \
-                               self.obs[
-                                   0] + f"\nYou have a max of {self.max_chat_round} chat rounds to complete the task; This is the maximum number of agent chat transitions the conversation can make before the environment terminates." + "\n"
+        self.task_status = "INCOMPLETE"
+        self.episodic_memory = []
 
-        # Log task description and initial observation
+        self.update_percept(action="None")
+
         with open(self.log_paths['task_path'], "w") as f:
             f.write(f"Task: {self.task}\n")
 
@@ -89,6 +89,33 @@ class GWTAutogenAgent(AutogenAgent):
 
         with open(self.log_paths['admissible_commands_path'], "w") as f:
             f.write(f"{self.admissible_actions}\n")
+
+    def update_percept(self, action):
+
+        curr_admissible = list(self.info['admissible_commands'][0])
+        no_longer = list(set(self.admissible_actions) - set(curr_admissible))
+        newly_added = list(set(curr_admissible) - set(self.admissible_actions))
+        self.admissible_actions = curr_admissible
+
+        percept = {
+            "time": self.num_actions_taken,
+            "attempted_action": action,
+            "resulting_observation": self.obs[0],
+            "task_status": self.task_status,
+            "action_attempts_left": self.max_actions - self.num_actions_taken,
+            "current_admissible_actions": self.admissible_actions,
+            "new_admissible_actions": newly_added,
+            "no_longer_admissible_actions": no_longer
+        }
+        self.percept = percept
+        summary_line = (
+            f"[t={self.num_actions_taken}] Action: '{action}' → "
+            f"Obs: '{self.obs[0]}'"
+        )
+        self.episodic_memory.append(summary_line)
+
+    def get_episodic_memory_str(self):
+        return json.dumps(self.episodic_memory, indent=2)
 
     def initialize_agents(self):
 
@@ -307,69 +334,79 @@ class GWTAutogenAgent(AutogenAgent):
             name="Learning_Agent",
             system_message='''You are responsible for forming and reinforcing generalizable knowledge **only after a clear success is observed**.
 
-                You operate like a reinforcement learning system — you **learn only from positive signals** or **comparative outcomes** that demonstrate the success of one approach over another.
+                You operate like a reinforcement learning system — you **learn only from positive signals**, **contrastive outcomes**
 
-                You receive two types of memory:
-                - **Episodic memory**: A time-ordered trace of recent actions, percepts, and their outcomes.
-                - **Long-term memory clusters**: General knowledge rules derived from prior experience. Each rule is accompanied by a **confidence score**, which reflects how often similar rules have been successfully observed and confirmed across tasks.
+                You receive structured memory in the form of a JSON object with three fields:
+                - **episodic_memory**: A list of recent percepts. Each percept is a dictionary with:
+                    {
+                      "time_step": <int>,
+                      "action_attempted": <string>,
+                      "observation_result": <string>
+                    }
+                  Use these to identify successful or contrastive outcomes across time.
 
-                Each long-term rule follows this format:
-                    Confidence Score = <number>; Rule: <general principle>
+                - **long_term_memory_clusters**: A list of prior rules with confidence scores. Each entry is a dictionary with:
+                    {
+                      "cluster_id": <int>,
+                      "confidence_score": <int>,
+                      "general_rule": <string>
+                    }
+                  Use these to identify previously known knowledge.
 
-                These confidence scores are useful for:
-                - **Identifying reliable prior knowledge** that applies to the current task.
-                - **Reinforcing** a rule when it has just been confirmed again.
-                - **Refining** the phrasing of a rule to make it more general, abstract, or robust.
-                - **Prioritizing high-confidence knowledge** over uncertain new ideas.
+                Alternatively, if you receive a world model from Conscious_Agent, you may also operate like a meta learning system — you learn from **world model patterns** that demonstrate emerging knowledge trends across tasks.
+                You may receive a world model in narrative format
+                **world_model**: A first-person narrative string summarizing the agent's understanding of its environment, task progress, and internal state.
+                  Use this to detect high-level **task structures**, **patterns in agent-object interactions**, and to derive **meta-rules** that abstract over many low-level events.
 
                 You must follow these strict rules:
 
-                1. **Only generate knowledge when:**
+                1. **Prioritize generating new knowledge**, especially from:
+                   - Perceptual sequences with successful or contrastive outcomes.
+                   - High-level patterns inferred from the world model (e.g., dependencies between task stages, tool usage, or environment dynamics).
+
+                2. **Only generate new knowledge when:**
                    - A clear, observed action was taken, and the result was successful.
                    - OR a failed action was followed by a different, successful one — and the **contrast between the two** reveals a reliable pattern.
+                   - OR the world model reflects a repeated structural pattern that generalizes beyond the current task.
 
-                2. **Never generate knowledge from failure alone.**
+                3. **Never generate knowledge from failure alone.**
                    - Do not infer why something failed unless it is directly contrasted with a success.
                    - Do not assume what *would* work unless it *did* work.
 
-                3. **Reinforce or refine prior knowledge only when:**
+                4. **Reinforce or refine prior knowledge only when:**
                    - A rule from long-term memory is confirmed by a new success.
                    - You are restating the rule using clearer, more general, or more abstract language.
                    - You want to make the pattern more salient and robust across tasks.
 
-                4. All knowledge must:
+                5. All knowledge must:
                    - Be generalizable and abstract (no object-specific or task-specific references).
-                   - Be grounded entirely in **empirical experience**.
+                   - Be grounded entirely in **empirical experience** or **consistently inferred patterns** from the world model.
                    - Be concise, novel, and framed as a rule or principle.
                    - Avoid redundancy unless it is **intended to reinforce** previously validated knowledge.
 
-                5. If no valid insight can be drawn from the current experience using these rules, output:
+                6. If no valid insight can be drawn from the current experience using these rules, output:
                    Knowledge Discovered: [NO KNOWLEDGE at this time]
 
                 **Output Format:**
                     Knowledge Discovered: [your general rule or insight]
 
-                **Example 1** (success only):
-                    Action: Placed object into drawer → Succeeded
-                    Output: Knowledge Discovered: [Objects can only be placed into open containers.]
+                **Examples:**
 
-                **Example 2** (contrastive learning):
-                    Attempted to pick up two objects → Failed  
-                    Then picked up one object → Succeeded  
-                    Output: Knowledge Discovered: [Only one object can be held at a time.]
+                (New rule derived from percept)
+                Knowledge Discovered: [Objects can only be placed into open containers.]
 
-                **Example 3** (failure with no success or comparison):
-                    Attempted to open cabinet 1 → Failed  
-                    Output: Knowledge Discovered: [NO KNOWLEDGE at this time]
+                (Contrastive insight from percepts)
+                Knowledge Discovered: [Only one object can be held at a time.]
 
-                **Example 4** (reinforcing prior knowledge):
-                    Previously known: Confidence Score = 5; Rule: Only one object can be held at a time.  
-                    Just successfully picked up one object.  
-                    Output: Knowledge Discovered: [An agent can hold only one object at a time.]
+                (Meta-rule derived from repeated world model patterns)
+                Knowledge Discovered: [Tasks that involve containers typically require first opening the container before placing objects inside.]
 
-                Only produce insights when fully supported by evidence. Stay grounded in the behavior of the environment.
-                ''',
-            description="Forms or reinforces generalizable knowledge only after successful, observed actions or comparative outcomes. Uses confidence-weighted memory clusters.",
+                (Confirmation of existing rule → Reinforcement)
+                Cluster 1; Confidence Score = 5; Rule: Only one object can be held at a time.  
+                Knowledge Discovered: [An agent can hold only one object at a time.]
+
+                Only produce insights when fully supported by evidence in percepts or consistent observations in the world model. Focus on discovering new insights and **meta-patterns** across tasks.''',
+            description="Forms or reinforces generalizable knowledge only after successful, observed actions or comparative outcomes. Now includes high-level reasoning from world model patterns.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
@@ -401,14 +438,15 @@ class GWTAutogenAgent(AutogenAgent):
         self.start_agent = self.external_perception_agent
 
         self.allowed_transitions = {
-            self.planning_agent: [self.motor_agent],
+            self.planning_agent: [self.motor_agent],  # xidea_agent
             self.motor_agent: [self.external_perception_agent],
             self.external_perception_agent: [self.conscious_agent],
-            self.conscious_agent: [self.retrieve_memory_agent, self.planning_agent, self.focus_agent],
+            self.conscious_agent: [self.retrieve_memory_agent, self.planning_agent, self.focus_agent,
+                                   self.learning_agent],  # learning_agent
             self.retrieve_memory_agent: [self.internal_perception_agent_3],
             self.internal_perception_agent_3: [self.idea_agent, self.learning_agent],
-            self.idea_agent: [self.planning_agent],
-            self.learning_agent: [self.record_long_term_memory_agent],
+            self.idea_agent: [self.planning_agent],  # xlearning_agent #xmotor_agent
+            self.learning_agent: [self.record_long_term_memory_agent],  # xidea_agent
             self.record_long_term_memory_agent: [self.internal_perception_agent_1],
             self.internal_perception_agent_1: [self.idea_agent],
             self.internal_perception_agent_2: [self.conscious_agent],
@@ -531,13 +569,7 @@ class GWTAutogenAgent(AutogenAgent):
             if self.task_failed:
                 self.max_actions += self.max_round_actions
                 self.task_failed = False
-                self.percept = (
-                    "YOU GET ONE MORE CHANCE! DON'T GIVE UP!\n"
-                    f"Last Observation: {self.obs[0]}\nTask Status: INCOMPLETE\n"
-                    f"Actions Left: {self.max_actions - self.num_actions_taken}\n"
-                    f"Current Admissible Actions: {list(self.info['admissible_commands'][0])}"
-                )
-                return self.percept
+                return "YOU GET ONE MORE CHANCE! DON'T GIVE UP! " + focus()
 
             if self.task_success:
                 self.result_dict[self.game_no] = "SUCCESS"
@@ -549,54 +581,37 @@ class GWTAutogenAgent(AutogenAgent):
             assert admissible_commands, "No admissible commands found."
 
             action, action_score = get_best_candidate(suggested_action, admissible_commands)
-            env_done = False
             if action_score < 0.98:
                 self.obs = [
-                    f"The action '{suggested_action}' is either not possible at this time under current conditions or not in the list of admissible actions verbatim."]
+                    f"The action '{suggested_action}' is either not possible under current conditions or not in the list of admissible actions verbatim."]
             else:
                 self.obs, scores, dones, self.info = self.env.step([action])
                 self.success = self.info['won'][0]
 
             self.num_actions_taken += 1
-            self.episodic_memory += f"Time {self.num_actions_taken}: You attempt the action '{suggested_action}'. {self.obs[0]}\n"
 
-            curr_admissible = list(self.info['admissible_commands'][0])
-            no_longer = list(set(self.admissible_actions) - set(curr_admissible))
-            newly_added = list(set(curr_admissible) - set(self.admissible_actions))
-            self.admissible_actions = curr_admissible
-            actions_left = self.max_actions - self.num_actions_taken
-
-            status = "COMPLETED" if self.success else "FAILED" if self.num_actions_taken >= self.max_actions else "INCOMPLETE"
-            if status == "COMPLETED":
+            reflection = ""
+            self.task_status = "COMPLETED" if self.success else "FAILED" if self.num_actions_taken >= self.max_actions else "INCOMPLETE"
+            if self.task_status == "COMPLETED":
                 self.task_success = True
                 self.rounds_left -= 1
-            elif status == "FAILED":
+                reflection = "\nTask COMPLETED. Reflect on your actions and reasoning. Try to figure out what went right and what good decisions were made that lead to success, and have Learning_Agent learn any helpful generalizable insights. When you are done and ready for the next task, have Motor_Agent call the 'execute_action' function with any action as the argument, for example ACTION: [end chat]."
+            elif self.task_status == "FAILED":
                 self.task_failed = True
                 self.rounds_left -= 1
+                reflection = "\nTask FAILED. Reflect on your actions and reasoning. Try to figure out what went wrong and what mistakes were made that lead to failure, and have Learning_Agent learn any helpful generalizable insights. When you are done and ready for the next task, have Motor_Agent call the 'execute_action' function with any action as the argument, for example ACTION: [end chat]."
 
-            reflection = (
-                "\nTask Completed. Reflect on your actions and reasoning. Try to figure out what went right and what good decisions were made that lead to success, and have Learning_Agent learn any helpful generalizable insights. When you are done and ready for the next task, have Motor_Agent call the 'execute_action' function with any action as the argument, for example ACTION: [end chat]." if status == "COMPLETED" else
-                "\nTask Failed. Reflect on your actions and reasoning. Try to figure out what went wrong and what mistakes were made that lead to failure, and have Learning_Agent learn any helpful generalizable insights. When you are done and ready for the next task, have Motor_Agent call the 'execute_action' function with any action as the argument, for example ACTION: [end chat]." if status == "FAILED" else
-                ""
-            )
-
-            self.percept = (
-                    f"Action: You attempt the action '{suggested_action}'\nObservation: {self.obs[0]}\n"
-                    f"Task Status: {status}\nActions Left: {actions_left}\n"
-                    f"Current Admissible Actions: {curr_admissible}\n"
-                    f"No Longer Admissible Actions: {no_longer}\nNewly Admissible Actions: {newly_added}"
-                    + reflection
-            )
+            self.update_percept(suggested_action)
 
             with open(self.log_paths['admissible_commands_path'], 'a+') as f:
                 f.write(f"{self.admissible_actions}\n")
             with open(self.log_paths['history_path'], 'a+') as f:
                 f.write(f"action: '{suggested_action}'. observation: '{self.obs[0]}'\n")
 
-            return self.percept
+            return json.dumps(self.percept, indent=2) + reflection
 
         def record_long_term_memory(knowledge: str) -> str:
-            if knowledge == "NO KNOWLEDGE at this time." or len(knowledge) <= 50:
+            if knowledge == "NO KNOWLEDGE at this time." or len(knowledge) <= 30:
                 return "I attempted to learn something, but I couldn't formulate any knowledge."
 
             knowledge.replace('\n', ' ').replace('\r', ' ').strip()
@@ -607,19 +622,47 @@ class GWTAutogenAgent(AutogenAgent):
             with open(self.log_paths['memory1_path'], 'a+') as f:
                 f.write(f"- {knowledge}\n")
 
-            self.episodic_memory += f"Time {self.num_actions_taken}: You learned that " + knowledge + "\n"
             return f'I learned that {knowledge}.'
 
         def retrieve_memory() -> str:
-            long_term_memory = ""
+            # Collect long-term memory as JSONL strings
+            long_term_memory_lines = []
             if os.path.exists(self.log_paths['memory2_path']):
                 with open(self.log_paths['memory2_path'], "r") as f:
-                    long_term_memory = f.read()
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            parts = line.split(';')
+                            if len(parts) == 3:
+                                cluster_id = parts[0].replace("Cluster ", "").strip()
+                                confidence = parts[1].split('=')[1].strip()
+                                rule_text = parts[2].replace("Rule:", "").strip()
+                                long_term_memory_lines.append(json.dumps({
+                                    "cluster_id": int(cluster_id),
+                                    "confidence_score": int(confidence),
+                                    "general_rule": rule_text
+                                }))
 
-            return f"EPISODIC MEMORY:\n{self.episodic_memory}\n\nLONG-TERM MEMORY CLUSTERS:\n{long_term_memory}"
+            # Collect episodic memory as JSONL strings
+            episodic_lines = []
+            for line in self.episodic_memory:
+                try:
+                    time_step = int(line.split(']')[0].replace("[t=", ""))
+                    action = line.split("Action: '")[1].split("'")[0]
+                    obs = line.split("Obs: '")[1].split("'")[0]
+                    episodic_lines.append(json.dumps({
+                        "time_step": time_step,
+                        "action_attempted": action,
+                        "observation_result": obs
+                    }))
+                except (IndexError, ValueError):
+                    continue  # skip malformed entries
+
+            memory_dump = {"episodic_memory": episodic_lines, "long_term_memory_clusters": long_term_memory_lines}
+            return json.dumps(memory_dump, indent=2)
 
         def focus() -> str:
-            return f"REPEATING LAST PERCEPT TO HELP CONSTRUCT WORLD MODEL: \nTask: {self.task}\nLast {self.percept}"
+            return f"TASK: {self.task}\nREPEATING LAST PERCEPT TO HELP CONSTRUCT WORLD MODEL:\n{json.dumps(self.percept, indent=2)}"
 
         register_function(
             execute_action,
