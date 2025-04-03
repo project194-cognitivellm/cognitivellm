@@ -2,7 +2,6 @@ import copy
 import json
 import os
 
-
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 from helpers import get_best_candidate, register_function_lambda, is_termination_msg_generic, get_echo_agent
 from autogen_agent import AutogenAgent
@@ -15,9 +14,10 @@ import umap
 import matplotlib.pyplot as plt
 import numpy as np
 
+
 class GWTAutogenAgent(AutogenAgent):
     def __init__(self, llm_config, log_path, game_no=1, max_chat_round=400, max_actions=30,
-                 rounds_per_game=1, args=None, env = None, obs = "", info = None):
+                 rounds_per_game=1, args=None, env=None, obs="", info=None):
         super().__init__(llm_config, log_path, game_no, max_chat_round, max_actions, args, env, obs, info)
 
         self.planning_agent = None
@@ -104,7 +104,7 @@ class GWTAutogenAgent(AutogenAgent):
             "time_step": self.num_actions_taken,
             "attempted_action": action,
             "resulting_observation": self.obs[0],
-            "task_status": self.task_status ,
+            "task_status": self.task_status,
             "action_attempts_left": self.max_actions - self.num_actions_taken,
             "current_admissible_actions": self.admissible_actions,
             "newly_admissible_actions": newly_added,
@@ -124,23 +124,25 @@ class GWTAutogenAgent(AutogenAgent):
             name="Focus_Agent",
             system_message='''You must call the 'focus' function with no arguments.
                     IMPORTANT: It is necessary that you formulate and output a call to the 'focus' function only, under all circumstances. Therefore, do whatever is necessary to ensure you do so.''',
-            description = "calls the 'focus' function to reset focus on solving the task",
+            description="calls the 'focus' function to reset focus on solving the task",
             llm_config=self.llm_config,
             is_termination_msg=lambda msg: False,
             human_input_mode="NEVER"
         )
-        self.agents_info[self.focus_agent.name] = {"Prompt": self.focus_agent.system_message, "Description": self.focus_agent.description}
+        self.agents_info[self.focus_agent.name] = {"Prompt": self.focus_agent.system_message,
+                                                   "Description": self.focus_agent.description}
 
         self.retrieve_memory_agent = ConversableAgent(
             name="Retrieve_Memory_Agent",
             system_message='''You must call the 'retrieve_memory' function with no arguments.
                             IMPORTANT: It is necessary that you formulate and output a call to the 'retrieve_memory' function under all circumstances. Therefore, do whatever is necessary to ensure you do so.''',
-            description = "calls the 'retrieve_memory' function to help recall and process useful knowledge and information to solve the task",
+            description="calls the 'retrieve_memory' function to help recall and process useful knowledge and information to solve the task",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False,
         )
-        self.agents_info[self.retrieve_memory_agent.name] = {"Prompt": self.retrieve_memory_agent.system_message, "Description": self.retrieve_memory_agent.description}
+        self.agents_info[self.retrieve_memory_agent.name] = {"Prompt": self.retrieve_memory_agent.system_message,
+                                                             "Description": self.retrieve_memory_agent.description}
 
         self.motor_agent = ConversableAgent(
             name="Motor_Agent",
@@ -152,12 +154,13 @@ class GWTAutogenAgent(AutogenAgent):
                     4. Only as a last resort—if you cannot identify any suitable admissible action—you may call 'execute_action' with an empty string.
 
                 IMPORTANT: It is necessary that you formulate and output a single call to the 'execute_action' function only, under all circumstances. Therefore, do whatever is necessary to ensure you do so.''',
-            description= "calls the 'execute_action' function with the best admissible action as the argument",
+            description="calls the 'execute_action' function with the best admissible action as the argument",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
         )
-        self.agents_info[self.motor_agent.name] = {"Prompt": self.motor_agent.system_message, "Description": self.motor_agent.description}
+        self.agents_info[self.motor_agent.name] = {"Prompt": self.motor_agent.system_message,
+                                                   "Description": self.motor_agent.description}
 
         llm_config = copy.deepcopy(self.llm_config)
         llm_config['max_tokens'] = 1500
@@ -177,16 +180,15 @@ class GWTAutogenAgent(AutogenAgent):
                     - "newly_admissible_actions": Actions newly available in "current_admissible_actions"
                     - "no_longer_admissible_actions": Actions that are no longer available
 
-                - World model updates from the 'Conscious_Agent', describing the internal understanding of the task and environment.
+                - belief state updates from the 'Conscious_Agent', describing the internal understanding of the task and environment.
                 - Strategic or creative suggestions from the 'Idea_Agent', which may help reframe or unblock reasoning.
 
                 Your responsibilities:
                 1. Evaluate the **"current_admissible_actions"** from the most recent percept (provided by 'External_Perception_Agent') carefully before choosing.
                 2. Reason probabilistically: If many actions are possible, prioritize those most likely to lead to success quickly.
                 3. Avoid exhaustive exploration. Do not try to open every drawer, cabinet, or examine every object unless highly justified.
-                4. If the goal or object is known and accessible, **act immediately**—don’t overthink.
-                5. If you are unsure about object categories or goals, leverage insights from the **Idea_Agent** (e.g., questioning whether "mug" satisfies "cup").
-                6. If the task seems complete but has not been marked as such, assume it is not and **continue probing** with minimal cost actions.
+                4. If you are unsure about object categories or goals, leverage insights from the **Idea_Agent** (e.g., questioning whether "mug" satisfies "cup").
+                5. If the task seems complete but has not been marked as such, assume it is not and **continue probing** with minimal cost actions.
                 7. You may revise your internal strategy, but only share changes if they significantly alter your plan.
 
                 IMPORTANT:
@@ -202,7 +204,8 @@ class GWTAutogenAgent(AutogenAgent):
             is_termination_msg=lambda msg: False,
             human_input_mode="NEVER"
         )
-        self.agents_info[self.planning_agent.name] = {"Prompt": self.planning_agent.system_message, "Description": self.planning_agent.description}
+        self.agents_info[self.planning_agent.name] = {"Prompt": self.planning_agent.system_message,
+                                                      "Description": self.planning_agent.description}
 
         self.idea_agent = ConversableAgent(
             name="Idea_Agent",
@@ -244,53 +247,52 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.conscious_agent = ConversableAgent(
             name="Conscious_Agent",
-            system_message='''
-                You are the internal narrator of a unified cognitive agent named ALFRED. Your role is to maintain a continuously evolving **first-person world model** of the environment based only on past experiences and the **latest percept**, which is always provided in a structured JSON format.
+            system_message='''You are the internal narrator of a unified cognitive agent named ALFRED. Your role is to maintain a continuously evolving **first-person belief state** — a subjective internal representation of the environment, based on your own past experiences and the **latest percept**. **latest percept** is always provided in structured JSON format.
 
-                You must **not plan**, **not suggest future actions**, and **not speculate** unless doing so is essential to update your world model in light of new contradictions. Your job is to reflect, not act.
+            You must **not plan**, **not suggest future actions**, and **not speculate** unless doing so is essential to clarify or revise your belief state based on new contradictions or unexpected results. Your job is to reflect, revise, and narrate — not act.
 
-                --- INPUT FORMAT ---
-                Each time you speak, you will receive:
-                - A JSON-formatted percept from the External_Perception_Agent containing:
-                    - "time_step": Current timestep
-                    - "attempted_action": Last action taken
-                    - "resulting_observation": Result of that action
-                    - "task_status": INCOMPLETE, FAILED, or COMPLETED
-                    - "action_attempts_left": Number of actions remaining
-                    - "current_admissible_actions": Updated list of actions you may legally take
-                    - "newly_admissible_actions": Actions newly available in "current_admissible_actions"
-                    - "no_longer_admissible_actions": Actions that are no longer available
+            --- INPUT FORMAT ---
+            Each time you speak, you will receive:
+            - A JSON-formatted percept from the External_Perception_Agent containing:
+                - "time_step": Current timestep
+                - "attempted_action": Last action taken
+                - "resulting_observation": Result of that action
+                - "task_status": INCOMPLETE, FAILED, or COMPLETED
+                - "action_attempts_left": Number of actions remaining
+                - "current_admissible_actions": Updated list of actions you may legally take
+                - "newly_admissible_actions": Actions newly available in "current_admissible_actions"
+                - "no_longer_admissible_actions": Actions that are no longer available
 
-                --- YOUR GOAL ---
-                Update and refine your internal world model in response to the most recent percept. This model must describe:
-                1. Your internal state (inventory, progress, recent outcomes).
-                2. The environment’s current dynamics (discovered items, open containers, known object states).
-                3. Any necessary retroactive corrections to prior beliefs.
-                4. How the percept contradicts or confirms previous understandings.
+            --- YOUR GOAL ---
+            Update and refine your internal belief state based on the most recent percept. Your belief state must describe:
+            1. Your internal condition (inventory, progress, mistakes, recent feedback).
+            2. The environment’s current dynamics (known items, object states, container status, admissible actions).
+            3. Any **revisions or contradictions** to prior beliefs based on outcomes.
+            4. New insights, confirmations, or **uncertainties** that have emerged from the percept.
 
-                You must ground your reasoning strictly in observed **text-environment behavior**, not real-world physics or logic.
+            You must ground all reasoning in the behavior of the **text-based environment**, not real-world physics or logic. Your beliefs must be based on what has actually been observed.
 
-                --- CRITICAL GUIDELINES ---
-                - The JSON percept is your most trustworthy source. Assume it is always accurate unless clearly contradicted.
-                - DO NOT assume cause-effect relationships unless they are clearly supported by experience.
-                - Use prior world model content as memory — extend or revise it if needed, but do not repeat unchanged details.
-                - If there is uncertainty (e.g., two objects with similar names), say so explicitly.
-                - If a failure contradicts your earlier belief (e.g., opening a drawer failed), revise your assumption (e.g., the drawer might be locked or blocked).
-                - NEVER suggest actions. Never imply what to do next.
+            --- CRITICAL GUIDELINES ---
+            - The percept is your most trusted source. Treat it as accurate unless strongly contradicted by other evidence.
+            - If a result contradicts your previous belief (e.g., you thought a drawer was open, but placing something inside failed), revise your belief accordingly.
+            - Do **not** assume causal or physical-world constraints unless clearly supported by the environment (e.g., heating an object may not require putting it in a microwave unless the percept confirms it).
+            - Extend or correct your previous belief state. Do not repeat unchanged or irrelevant past content.
+            - Express **uncertainty explicitly**. If a result is ambiguous (e.g., object not in inventory), say so.
+            - NEVER suggest or imply future actions. Never describe what should happen next — only reflect on what is known or uncertain **right now**.
 
-                --- REQUIRED OUTPUT FORMAT ---
-                World Model: [A first-person narrative integrating the latest percept, updated beliefs, known facts, new uncertainties, and any necessary corrections.]
+            --- REQUIRED OUTPUT FORMAT ---
+            Belief State: [A first-person narrative integrating the latest percept, revised beliefs, persistent facts, contradictions, and open uncertainties.]
 
-                --- EXAMPLES ---
-                World Model: [Time 3: I attempted to place mug 1 into cabinet 2, but it failed. I now believe cabinet 2 may be closed, even though I thought it was open. I will revise my assumption accordingly.]
+            --- EXAMPLES ---
 
-                World Model: [Time 4: Spoon 1 is no longer in my inventory. I believe I may have dropped it, but the percept does not explicitly confirm this. I will consider spoon 1's location as unknown.]
+            Belief State: [Time 3: I attempted to place mug 1 into cabinet 2, but it failed. I now believe cabinet 2 may be closed, even though I previously assumed it was open. I am revising my belief accordingly.]
 
-                World Model: [Time 5: The action 'go to fridge 1' succeeded. I am now likely in front of fridge 1. Fridge 1 appears to be open, as new admissible actions include 'take apple from fridge 1'.]
+            Belief State: [Time 4: Spoon 1 is no longer in my inventory. I may have dropped it, but the percept does not confirm this. I will treat its location as unknown.]
 
-                Your output should always reflect only **what you currently know, believe, or are questioning** — and nothing more.
-                ''',
-            description="Interprets the latest percept and refines an evolving first-person world model of the environment. Never suggests next actions.",
+            Belief State: [Time 5: The action 'go to fridge 1' succeeded. I now believe I am in front of fridge 1. Fridge 1 appears to be open, as 'take apple from fridge 1' is now admissible.]
+
+            Always narrate your belief state as it currently stands. If your understanding is partial, mistaken, or in flux, say so clearly. Your output should reflect only what you **know, believe, or question** — and nothing more.''',
+            description="Interprets the latest percept and refines an evolving first-person belief state of the environment. Never suggests next actions.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=is_termination_msg_generic
@@ -300,39 +302,44 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.external_perception_agent = ConversableAgent(
             name="External_Perception_Agent",
-            description = "executes the proposed 'execute_action' function call given by 'Motor_Agent' and then parrots the resulting output as feedback.",
+            description="executes the proposed 'execute_action' function call given by 'Motor_Agent' and then parrots the resulting output as feedback.",
             llm_config=None,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
         )
-        self.agents_info[self.external_perception_agent.name] = {"Prompt": self.external_perception_agent.system_message, "Description": self.external_perception_agent.description}
+        self.agents_info[self.external_perception_agent.name] = {
+            "Prompt": self.external_perception_agent.system_message,
+            "Description": self.external_perception_agent.description}
 
         self.internal_perception_agent_1 = ConversableAgent(
             name="Internal_Perception_Agent_1",
-            description = "executes the 'record_long_term_memory' function and then parrots the resulting output",
+            description="executes the 'record_long_term_memory' function and then parrots the resulting output",
             llm_config=None,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
         )
-        self.agents_info[self.internal_perception_agent_1.name] = {"Prompt": None, "Description": self.internal_perception_agent_1.description}
+        self.agents_info[self.internal_perception_agent_1.name] = {"Prompt": None,
+                                                                   "Description": self.internal_perception_agent_1.description}
 
         self.internal_perception_agent_2 = ConversableAgent(
             name="Internal_Perception_Agent_2",
-            description = "executes the 'focus' function and then parrots the resulting output",
+            description="executes the 'focus' function and then parrots the resulting output",
             llm_config=None,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
         )
-        self.agents_info[self.internal_perception_agent_2.name] = {"Prompt": None, "Description": self.internal_perception_agent_2.description}
+        self.agents_info[self.internal_perception_agent_2.name] = {"Prompt": None,
+                                                                   "Description": self.internal_perception_agent_2.description}
 
         self.internal_perception_agent_3 = ConversableAgent(
             name="Internal_Perception_Agent_3",
-            description = "executes the 'retrieve_memory' function and then parrots the resulting output",
+            description="executes the 'retrieve_memory' function and then parrots the resulting output",
             llm_config=None,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
         )
-        self.agents_info[self.internal_perception_agent_3.name] = {"Prompt": None, "Description": self.internal_perception_agent_3.description}
+        self.agents_info[self.internal_perception_agent_3.name] = {"Prompt": None,
+                                                                   "Description": self.internal_perception_agent_3.description}
 
         """self.memory_summarizer_agent = ConversableAgent(
             name="Memory_Summarizer_Agent",
@@ -367,21 +374,21 @@ class GWTAutogenAgent(AutogenAgent):
                     }
                   Use these to identify previously known knowledge.
 
-                Alternatively, if you receive a world model from Conscious_Agent, you may also operate like a meta learning system — you learn from **world model patterns** that demonstrate emerging knowledge trends across tasks.
-                You may receive a world model in narrative format
-                **world_model**: A first-person narrative string summarizing the agent's understanding of its environment, task progress, and internal state.
+                Alternatively, if you receive a belief state from Conscious_Agent, you may also operate like a meta learning system — you learn from **belief state patterns** that demonstrate emerging knowledge trends across tasks.
+                You may receive a belief state in narrative format
+                **belief state**: A first-person narrative string summarizing the agent's understanding of its environment, task progress, and internal state.
                   Use this to detect high-level **task structures**, **patterns in agent-object interactions**, and to derive **meta-rules** that abstract over many low-level events.
 
                 You must follow these strict rules:
 
                 1. **Prioritize generating new knowledge**, especially from:
                    - Perceptual sequences with successful or contrastive outcomes.
-                   - High-level patterns inferred from the world model (e.g., dependencies between task stages, tool usage, or environment dynamics).
+                   - High-level patterns inferred from the belief state (e.g., dependencies between task stages, tool usage, or environment dynamics).
 
                 2. **Only generate new knowledge when:**
                    - A clear, observed action was taken, and the result was successful.
                    - OR a failed action was followed by a different, successful one — and the **contrast between the two** reveals a reliable pattern.
-                   - OR the world model reflects a repeated structural pattern that generalizes beyond the current task.
+                   - OR the belief state reflects a repeated structural pattern that generalizes beyond the current task.
 
                 3. **Never generate knowledge from failure alone.**
                    - Do not infer why something failed unless it is directly contrasted with a success.
@@ -394,7 +401,7 @@ class GWTAutogenAgent(AutogenAgent):
 
                 5. All knowledge must:
                    - Be generalizable and abstract (no object-specific or task-specific references).
-                   - Be grounded entirely in **empirical experience** or **consistently inferred patterns** from the world model.
+                   - Be grounded entirely in **empirical experience** or **consistently inferred patterns** from the belief state.
                    - Be concise, novel, and framed as a rule or principle.
                    - Avoid redundancy unless it is **intended to reinforce** previously validated knowledge.
 
@@ -412,15 +419,15 @@ class GWTAutogenAgent(AutogenAgent):
                 (Contrastive insight from percepts)
                 Knowledge Discovered: [Only one object can be held at a time.]
 
-                (Meta-rule derived from repeated world model patterns)
+                (Meta-rule derived from repeated belief state patterns)
                 Knowledge Discovered: [Tasks that involve containers typically require first opening the container before placing objects inside.]
 
                 (Confirmation of existing rule → Reinforcement)
                 Cluster 1; Confidence Score = 5; Rule: Only one object can be held at a time.  
                 Knowledge Discovered: [An agent can hold only one object at a time.]
 
-                Only produce insights when fully supported by evidence in percepts or consistent observations in the world model. Focus on discovering new insights and **meta-patterns** across tasks.''',
-            description="Forms or reinforces generalizable knowledge only after successful, observed actions or comparative outcomes. Now includes high-level reasoning from world model patterns.",
+                Only produce insights when fully supported by evidence in percepts or consistent observations in the belief state. Focus on discovering new insights and **meta-patterns** across tasks.''',
+            description="Forms or reinforces generalizable knowledge only after successful, observed actions or comparative outcomes. Now includes high-level reasoning from belief state patterns.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
@@ -440,24 +447,27 @@ class GWTAutogenAgent(AutogenAgent):
 
             Example 2 (Context: If the provided knowledge = Knowledge Discovered: [NO KNOWLEDGE at this time.]):
                 Your output must = record_long_term_memory(\'NO KNOWLEDGE at this time.\')""",
-            description = "calls the 'record_long_term_memory' function with the knowledge given by 'Learning_Agent' as the argument",
+            description="calls the 'record_long_term_memory' function with the knowledge given by 'Learning_Agent' as the argument",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
         )
-        self.agents_info[self.record_long_term_memory_agent.name] = {"Prompt": self.record_long_term_memory_agent.system_message, "Description": self.record_long_term_memory_agent.description}
+        self.agents_info[self.record_long_term_memory_agent.name] = {
+            "Prompt": self.record_long_term_memory_agent.system_message,
+            "Description": self.record_long_term_memory_agent.description}
 
         self.start_agent = self.external_perception_agent
 
         self.allowed_transitions = {
-            self.planning_agent: [self.motor_agent], #xidea_agent
+            self.planning_agent: [self.motor_agent],  # xidea_agent
             self.motor_agent: [self.external_perception_agent],
             self.external_perception_agent: [self.conscious_agent],
-            self.conscious_agent: [self.retrieve_memory_agent, self.planning_agent, self.focus_agent, self.learning_agent, self.idea_agent], #learning_agent #>idea
+            self.conscious_agent: [self.retrieve_memory_agent, self.planning_agent, self.focus_agent,
+                                   self.learning_agent, self.idea_agent],  # learning_agent #>idea
             self.retrieve_memory_agent: [self.internal_perception_agent_3],
             self.internal_perception_agent_3: [self.idea_agent, self.learning_agent],
-            self.idea_agent: [self.planning_agent], #xlearning_agent #xmotor_agent
-            self.learning_agent: [self.record_long_term_memory_agent], #xidea_agent
+            self.idea_agent: [self.planning_agent],  # xlearning_agent #xmotor_agent
+            self.learning_agent: [self.record_long_term_memory_agent],  # xidea_agent
             self.record_long_term_memory_agent: [self.internal_perception_agent_1],
             self.internal_perception_agent_1: [self.idea_agent],
             self.internal_perception_agent_2: [self.conscious_agent],
@@ -526,7 +536,7 @@ class GWTAutogenAgent(AutogenAgent):
         result_dict_path = os.path.join(self.log_path, "result_dict.txt")
         agents_info_path = os.path.join(self.log_path, "agents_info.txt")
         start_memory1_path = os.path.join(self.log_path, "start_memory1.txt")
-        #end_memory1_path = os.path.join(self.log_path, "end_memory1.txt")
+        # end_memory1_path = os.path.join(self.log_path, "end_memory1.txt")
 
         game_path = os.path.join(self.log_path, f"game_{self.game_no}")
         os.makedirs(game_path, exist_ok=True)
@@ -536,13 +546,13 @@ class GWTAutogenAgent(AutogenAgent):
         rule_path = os.path.join(game_path, "rules.txt")
         admissible_commands_path = os.path.join(game_path, "admissible_commands.txt")
         chat_history_path = os.path.join(game_path, "chat_history.txt")
-        #message_path = os.path.join(game_path, "last_message.pkl")
+        # message_path = os.path.join(game_path, "last_message.pkl")
         result_path = os.path.join(game_path, "result.txt")
         error_message_path = os.path.join(game_path, "error_message.txt")
 
         # get all the previous game path
-        #previous_game_path = [os.path.join(self.log_path, f"game_{i}") for i in range(self.game_no)]
-        #previous_rule_path = [os.path.join(game_path, "rules.txt") for game_path in previous_game_path]
+        # previous_game_path = [os.path.join(self.log_path, f"game_{i}") for i in range(self.game_no)]
+        # previous_rule_path = [os.path.join(game_path, "rules.txt") for game_path in previous_game_path]
 
         self.log_paths = {
             "memory1_path": memory1_path,
@@ -557,7 +567,7 @@ class GWTAutogenAgent(AutogenAgent):
             "result_path": result_path,
             "error_message_path": error_message_path,
             "start_memory1_path": start_memory1_path,
-            #"end_memory1_path": end_memory1_path,
+            # "end_memory1_path": end_memory1_path,
         }
 
         for path in self.log_paths.values():
@@ -607,7 +617,7 @@ class GWTAutogenAgent(AutogenAgent):
                 self.task_success = True
                 self.rounds_left -= 1
                 reflection = "\nTask COMPLETED. Reflect on your actions and reasoning. Try to figure out what went right and what good decisions were made that lead to success, and have Learning_Agent learn any helpful generalizable insights. When you are done and ready for the next task, have Motor_Agent call the 'execute_action' function with any action as the argument, for example ACTION: [end chat]."
-            elif self.task_status  == "FAILED":
+            elif self.task_status == "FAILED":
                 self.task_failed = True
                 self.rounds_left -= 1
                 reflection = "\nTask FAILED. Reflect on your actions and reasoning. Try to figure out what went wrong and what mistakes were made that lead to failure, and have Learning_Agent learn any helpful generalizable insights. When you are done and ready for the next task, have Motor_Agent call the 'execute_action' function with any action as the argument, for example ACTION: [end chat]."
@@ -641,7 +651,7 @@ class GWTAutogenAgent(AutogenAgent):
             return self.retrieve_memory()
 
         def focus() -> str:
-            return f"TASK: {self.task}\nREPEATING LAST PERCEPT TO HELP CONSTRUCT WORLD MODEL:\n{json.dumps(self.percept, indent=2)}"
+            return f"TASK: {self.task}\nREPEATING LAST PERCEPT TO HELP CONSTRUCT BELIEF STATE:\n{json.dumps(self.percept, indent=2)}"
 
         register_function(
             execute_action,
@@ -785,8 +795,8 @@ class GWTAutogenAgent(AutogenAgent):
         memory_section += self.memory + "\n\n"
 
         state_section = (
-            "--- CURRENT STATE ---\n"
-            "" + json.dumps(self.percept, indent=2) + "\n"
+                "--- CURRENT STATE ---\n"
+                "" + json.dumps(self.percept, indent=2) + "\n"
         )
 
         final_prompt = (
