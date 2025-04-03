@@ -39,7 +39,6 @@ class GWTAutogenAgent(AutogenAgent):
         self.max_round_actions = self.max_actions // self.rounds
         self.max_actions = self.max_actions - self.max_round_actions * (self.rounds - 1)
 
-        self.k = 0
         self.allowed_transitions = None
 
         self.rounds_left = self.rounds
@@ -112,11 +111,9 @@ class GWTAutogenAgent(AutogenAgent):
             "no_longer_admissible_actions": no_longer
         }
         self.percept = percept
-        summary_line = (
-            f"[t={self.num_actions_taken}] Action: '{action}' → "
-            f"Obs: '{self.obs[0]}'"
-        )
-        self.episodic_memory.append(summary_line)
+        summary_dict = {"Time": self.num_actions_taken, "Action": action, "Observation": self.obs[0]}
+
+        self.episodic_memory.append(summary_dict)
 
     def get_episodic_memory_str(self):
         return json.dumps(self.episodic_memory, indent=2)
@@ -185,7 +182,7 @@ class GWTAutogenAgent(AutogenAgent):
 
                 Your responsibilities:
                 1. Evaluate the **"current_admissible_actions"** from the most recent percept (provided by 'External_Perception_Agent') carefully before choosing.
-                2. Reason probabilistically: If many actions are possible but few can be taken, prioritize those most likely to lead to success quickly.
+                2. Reason probabilistically: If many actions are possible, prioritize those most likely to lead to success quickly.
                 3. Avoid exhaustive exploration. Do not try to open every drawer, cabinet, or examine every object unless highly justified.
                 4. If the goal or object is known and accessible, **act immediately**—don’t overthink.
                 5. If you are unsure about object categories or goals, leverage insights from the **Idea_Agent** (e.g., questioning whether "mug" satisfies "cup").
@@ -625,7 +622,9 @@ class GWTAutogenAgent(AutogenAgent):
             return json.dumps(self.percept, indent=2) + reflection
 
         def record_long_term_memory(knowledge: str) -> str:
-            if knowledge == "NO KNOWLEDGE at this time." or len(knowledge) <= 30:
+
+            _, score = get_best_candidate(knowledge, ["NO KNOWLEDGE at this time."])
+            if knowledge == "NO KNOWLEDGE at this time." or len(knowledge) <= 30 or score >= .7:
                 return "I attempted to learn something, but I couldn't formulate any knowledge."
 
             knowledge.replace('\n', ' ').replace('\r', ' ').strip()
@@ -672,22 +671,19 @@ class GWTAutogenAgent(AutogenAgent):
             description="Retrieves Memory."
         )
 
-    def get_summary_rules(self, model_name='all-MiniLM-L6-v2', use_elbow=True, max_k=15,
-                          plot_elbow=False, plot_clusters=False, save_dir='.'):
+    def get_summary_rules(self, model_name='all-MiniLM-L6-v2', plot_clusters=False, save_dir='.'):
         """
-        Get representative rules using KMeans clustering and optionally save elbow + cluster plots.
+        Get representative rules using KMeans clustering and optionally save cluster plot.
 
         Args:
-            model_name (str): Transformer model for sentence embeddings
-            use_elbow (bool): Whether to use elbow method to choose k
-            max_k (int): Max number of clusters for elbow
-            plot_elbow (bool): Save elbow plot to file
-            plot_clusters (bool): Save cluster visualization to file
-            save_dir (str): Directory to save plots
+            model_name (str): Transformer model for sentence embeddings.
+            plot_clusters (bool): Whether to save UMAP cluster visualization.
+            save_dir (str): Directory to save plot (if applicable).
 
         Returns:
-            dict: Representative rules, cluster sizes, cluster members, and chosen k
+            dict: Representative rules, cluster sizes, cluster members, and chosen_k.
         """
+
         rule_text = ''
         if os.path.exists(self.log_paths['memory1_path']):
             with open(self.log_paths['memory1_path'], "r") as file:
@@ -702,31 +698,9 @@ class GWTAutogenAgent(AutogenAgent):
         model = SentenceTransformer(model_name)
         embeddings = model.encode(rule_lines, convert_to_tensor=True).cpu().numpy()
 
-        if use_elbow and num_rules > 3:
-            inertias = []
-            k_range = range(1, min(max_k, num_rules) + 1)
-            for k in k_range:
-                km = KMeans(n_clusters=k, random_state=42, n_init=10)
-                km.fit(embeddings)
-                inertias.append(km.inertia_)
-
-            kl = KneeLocator(k_range, inertias, curve="convex", direction="decreasing")
-            chosen_k = kl.elbow or min(10, num_rules)
-
-            if plot_elbow:
-                plt.figure()
-                plt.plot(k_range, inertias, marker='o')
-                plt.axvline(chosen_k, color='r', linestyle='--', label=f'Elbow at k={chosen_k}')
-                plt.title("Elbow Method for Optimal k")
-                plt.xlabel("Number of Clusters (k)")
-                plt.ylabel("Inertia")
-                plt.legend()
-                plt.grid(True)
-                elbow_path = os.path.join(save_dir, 'elbow_plot.png')
-                plt.savefig(elbow_path)
-                plt.close()
-        else:
-            chosen_k = num_rules if num_rules <= 10 else int(np.sqrt(num_rules))
+        # Calculate k (clusters) using capped growth function to prevent over-clustering
+        max_rules = num_rules
+        chosen_k = max(1, min(max_rules, int(num_rules ** (2 / 3))))
 
         kmeans = KMeans(n_clusters=chosen_k, random_state=42, n_init=10)
         labels = kmeans.fit_predict(embeddings)
@@ -745,12 +719,19 @@ class GWTAutogenAgent(AutogenAgent):
                     center = kmeans.cluster_centers_[i]
                     cluster_embeddings = embeddings[cluster_indices]
                     distances = np.linalg.norm(cluster_embeddings - center, axis=1)
+
+                    if len(distances) == 0:
+                        continue  # Skip empty cluster
+
                     closest_idx = np.argmin(distances)
                     closest_rule_idx = cluster_indices[closest_idx]
                     representative_rule = rule_lines[closest_rule_idx]
                     confidence_score = cluster_sizes[i]
 
-                    file.write(f'Cluster {i+1}; Confidence Score = {confidence_score}; Rule: {representative_rule[1:]}\n')
+                    # Avoid stripping leading char if it's not needed
+                    clean_rule = representative_rule[1:] if representative_rule.startswith('[') else representative_rule
+
+                    file.write(f'Cluster {i + 1}; Confidence Score = {confidence_score}; Rule: {clean_rule}\n')
                     representative_rules.append(representative_rule)
 
         if plot_clusters:
@@ -800,11 +781,6 @@ class GWTAutogenAgent(AutogenAgent):
             f"- You must choose actions only from the list of current_admissible_actions in the percept JSON.\n\n"
         )
 
-        roles_section = "--- AGENT ROLES ---\n"
-        for name, info in self.agents_info.items():
-            roles_section += f"- {name}: {info.get('Description', 'No description provided.')}\n"
-        roles_section += "\n"
-
         memory_section = "--- PRIOR KNOWLEDGE & EPISODIC MEMORY ---\n"
         memory_section += self.memory + "\n\n"
 
@@ -818,7 +794,7 @@ class GWTAutogenAgent(AutogenAgent):
             "Use prior knowledge when relevant, minimize communication and actions, and confirm task completion explicitly through perceptual feedback."
         )
 
-        return intro + task_section + constraints_section + roles_section + memory_section + state_section + final_prompt
+        return intro + task_section + constraints_section + memory_section + state_section + final_prompt
 
     def retrieve_memory(self):
         # Collect long-term memory as JSONL strings
@@ -841,11 +817,11 @@ class GWTAutogenAgent(AutogenAgent):
 
         # Collect episodic memory as JSONL strings
         episodic_lines = []
-        for line in self.episodic_memory:
+        for dict in self.episodic_memory:
             try:
-                time_step = int(line.split(']')[0].replace("[t=", ""))
-                action = line.split("Action: '")[1].split("'")[0]
-                obs = line.split("Obs: '")[1].split("'")[0]
+                time_step = int(dict["Time"])
+                action = dict["Action"]
+                obs = dict["Observation"]
                 episodic_lines.append(json.dumps({
                     "time_step": time_step,
                     "action_attempted": action,
