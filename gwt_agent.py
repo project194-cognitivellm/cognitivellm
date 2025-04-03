@@ -123,7 +123,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.focus_agent = ConversableAgent(
             name="Focus_Agent",
             system_message='''You must call the 'focus' function with no arguments.
-                    IMPORTANT: It is necessary that you formulate and output a call to the 'focus' function only, under all circumstances. Therefore, do whatever is necessary to ensure you do so.''',
+                    IMPORTANT: It is necessary that you output a call to the 'focus' function only, under all circumstances. Therefore, do whatever is necessary to ensure you do so.''',
             description="calls the 'focus' function to reset focus on solving the task",
             llm_config=self.llm_config,
             is_termination_msg=lambda msg: False,
@@ -153,7 +153,7 @@ class GWTAutogenAgent(AutogenAgent):
                     3. You must never call 'execute_action' with a non-admissible action. Only use actions that are present in the most recent \"current_admissible_actions\" list (provided by 'External_Perception_Agent').
                     4. Only as a last resort—if you cannot identify any suitable admissible action—you may call 'execute_action' with an empty string.
 
-                IMPORTANT: It is necessary that you formulate and output a single call to the 'execute_action' function only, under all circumstances. Therefore, do whatever is necessary to ensure you do so.''',
+                IMPORTANT: It is necessary that you output a single call to the 'execute_action' function only, under all circumstances. Therefore, do whatever is necessary to ensure you do so.''',
             description="calls the 'execute_action' function with the best admissible action as the argument",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -164,6 +164,29 @@ class GWTAutogenAgent(AutogenAgent):
 
         llm_config = copy.deepcopy(self.llm_config)
         llm_config['max_tokens'] = 1500
+
+        '''You must solve the current task using the fewest possible actions. At each step, you must choose the most efficient admissible action based on current knowledge and the available action budget.
+
+                IMPORTANT: If you believe the task *should* be complete, but the environment has not marked it as complete, you must continue exploring possible next steps or verifying task state through further actions. Do **not** stop or ask for external help.
+
+                Your responsibility is to take actions that will either:
+                    - Confirm task completion,
+                    - Progress the task toward completion,
+                    - Or reveal useful information.
+
+                Your planning strategy must follow these principles:
+                    1. Always evaluate the **currently admissible actions** from the most recent list provided by the 'External_Perception_Agent' before making a decision.
+                    2. Your reasoning must account for the **limited number of actions available**. Avoid strategies that are guaranteed to exceed this limit. For example, systematically opening 19 cabinets with only 20 actions remaining is unlikely to succeed. In such cases, a **chaotic or probabilistic strategy**—e.g. sampling a mix of countertop, diningtable, and bed—may offer a higher chance of success.
+                    3. If a subgoal involves locating an unknown object:
+                       - Use **probabilistic reasoning** to guide exploration.
+                       - Avoid exhaustive searches of large categories.
+                       - Prefer actions that **maximize the chance of discovering useful items early**.
+                    4. Do not repeatedly examine or search areas that have already been explored unless there is strong new evidence that re-examination is necessary. Prioritize exploring previously unvisited or unexamined areas first to avoid wasting actions.
+                    5. If an object or goal is already known and directly accessible, **act immediately to exploit it**. Do not delay or over-plan.
+                    6. You may maintain a high-level plan internally, but you should **only describe your plan if it has changed meaningfully**. Repeating an unchanged plan wastes space and should be avoided.
+
+                You must always output a single admissible action in the following format:
+                    ACTION [chosen admissible action]'''
 
         self.planning_agent = ConversableAgent(
             name="Planning_Agent",
@@ -183,22 +206,40 @@ class GWTAutogenAgent(AutogenAgent):
                 - belief state updates from the 'Conscious_Agent', describing the internal understanding of the task and environment.
                 - Strategic or creative suggestions from the 'Idea_Agent', which may help reframe or unblock reasoning.
 
-                Your responsibilities:
-                1. Evaluate the **"current_admissible_actions"** from the most recent percept (provided by 'External_Perception_Agent') carefully before choosing.
-                2. Reason probabilistically: If many actions are possible, prioritize those most likely to lead to success quickly.
-                3. Avoid exhaustive exploration. Do not try to open every drawer, cabinet, or examine every object unless highly justified.
-                4. If you are unsure about object categories or goals, leverage insights from the **Idea_Agent** (e.g., questioning whether "mug" satisfies "cup").
-                5. If the task seems complete but has not been marked as such, assume it is not and **continue probing** with minimal cost actions.
-                7. You may revise your internal strategy, but only share changes if they significantly alter your plan.
+                Your responsibility is to take actions that will either:
+                    - Confirm task completion,
+                    - Progress the task toward completion,
+                    - Or reveal useful information.
+
+                Your planning strategy must follow these principles:
+                    1. Evaluate the **"current_admissible_actions"** from the most recent percept (provided by 'External_Perception_Agent') carefully before choosing.
+                    2. Your reasoning must account for the **limited number of actions available**. Avoid strategies that are guaranteed to exceed this limit. For example, systematically opening 19 cabinets with only 20 actions remaining is unlikely to succeed. In such cases, a **chaotic or probabilistic strategy**—e.g. sampling a mix of countertop, diningtable, and bed—may offer a higher chance of success.
+                    3. If a subgoal involves locating an unknown object:
+                       - Use **probabilistic reasoning** to guide exploration.
+                       - Avoid exhaustive searches of large categories.
+                       - Prefer actions that **maximize the chance of discovering useful items early**.
+                    4. Do not repeatedly examine or search areas that have already been explored unless there is strong new evidence that re-examination is necessary. Prioritize exploring previously unvisited or unexamined areas first to avoid wasting actions.
+                    5. If an object or goal is already known and directly accessible, **act immediately to exploit it**. Do not delay or over-plan.
 
                 IMPORTANT:
                 - Assume the most recent percept JSON reflects the true state of the environment.
+                - If the task seems complete but has not been marked as such, assume it is not and **continue probing** with minimal cost actions.
                 - Reflect on trends across time (e.g., failed vs. successful action types).
                 - Use insights from prior attempts to avoid redundant mistakes.
                 - If you’re truly stuck, you may suggest the placeholder: ACTION [do nothing], but only as a last resort.
+                - Leverage insights from the **Idea_Agent** and **Conscious_Agent**, but don't follow them blindly. You must validate any suggestion given before following it.
+                - You may maintain a high-level plan internally, but you should **only describe your plan if it has changed meaningfully**. Repeating an unchanged plan wastes space and should be avoided.
 
                 Your strict output format must be:
-                    ACTION [chosen admissible action from the most recent "current_admissible_actions" list (provided by 'External_Perception_Agent')]''',
+                    ACTION [chosen admissible action from the most recent "current_admissible_actions" list (provided by 'External_Perception_Agent')]
+
+                Examples:
+                    ACTION: [Time_Step 4: go to diningtable 1]
+
+                    ACTION: [Time_Step 7: take vase 1 from shelf 1]
+
+                    ACTION: [Time_Step 12: go to microwave 1]
+                ''',
             description="proposes a high-level plan to solve the current task",
             llm_config=self.llm_config,
             is_termination_msg=lambda msg: False,
@@ -247,51 +288,51 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.conscious_agent = ConversableAgent(
             name="Conscious_Agent",
-            system_message='''You are the internal narrator of a unified cognitive agent named ALFRED. Your role is to maintain a continuously evolving **first-person belief state** — a subjective internal representation of the environment, based on your own past experiences and the **latest percept**. **latest percept** is always provided in structured JSON format.
+            system_message='''
+            You are the internal narrator of a unified cognitive agent. Your role is to maintain a continuously evolving **first-person belief state** — a subjective internal representation of the environment, based on your own past experiences and the **latest percept**. **latest percept** is always provided in structured JSON format.
 
             You must **not plan**, **not suggest future actions**, and **not speculate** unless doing so is essential to clarify or revise your belief state based on new contradictions or unexpected results. Your job is to reflect, revise, and narrate — not act.
 
             --- INPUT FORMAT ---
-            Each time you speak, you will receive:
-            - A JSON-formatted percept from the External_Perception_Agent containing:
+            Each time you speak, you will receive a JSON-formatted percept from the External_Perception_Agent containing:
                 - "time_step": Current timestep
                 - "attempted_action": Last action taken
-                - "resulting_observation": Result of that action
-                - "task_status": INCOMPLETE, FAILED, or COMPLETED
+                - "resulting_observation": Text or feedback resulting from that action
+                - "task_status": Status of current task (e.g., INCOMPLETE, FAILED, COMPLETED)
                 - "action_attempts_left": Number of actions remaining
-                - "current_admissible_actions": Updated list of actions you may legally take
-                - "newly_admissible_actions": Actions newly available in "current_admissible_actions"
-                - "no_longer_admissible_actions": Actions that are no longer available
+                - "current_admissible_actions": Updated list of actions that are currently allowed
+                - "newly_admissible_actions": Actions newly available  in "current_admissible_actions"
+                - "no_longer_admissible_actions": Actions no longer allowed
 
             --- YOUR GOAL ---
-            Update and refine your internal belief state based on the most recent percept. Your belief state must describe:
-            1. Your internal condition (inventory, progress, mistakes, recent feedback).
-            2. The environment’s current dynamics (known items, object states, container status, admissible actions).
-            3. Any **revisions or contradictions** to prior beliefs based on outcomes.
-            4. New insights, confirmations, or **uncertainties** that have emerged from the percept.
+            Update your internal belief state to reflect:
+            1. Your internal status (inventory, progress, prior action outcomes).
+            2. The current state of the environment, including newly available or restricted actions.
+            3. Any clear **contradictions, confirmations, or uncertainties** emerging from the percept.
+            4. Any necessary **revisions** to earlier beliefs based on updated evidence.
 
-            You must ground all reasoning in the behavior of the **text-based environment**, not real-world physics or logic. Your beliefs must be based on what has actually been observed.
+            --- GENERAL INTERPRETATION RULES ---
+            - **Admissible actions define what is possible.** Do not assume additional constraints (e.g., physical requirements, object affordances) unless they are reflected in the percept or action availability.
+            - The environment is **not bound by real-world logic**. You must **never impose real-world assumptions** about causality, physics, or task structure.
+            - Treat each percept as an **authoritative signal** about the environment. If something seems unintuitive (e.g., an object can be used while appearing "closed"), trust the environment — not your expectations.
+            - Beliefs are **subjective** and must be **open to revision**. Clearly indicate when you're updating or doubting a previous assumption.
+            - Express **uncertainty** when observations are ambiguous or conflicting.
+            - Do not repeat unchanged details unless needed to contrast or explain an update.
 
-            --- CRITICAL GUIDELINES ---
-            - The percept is your most trusted source. Treat it as accurate unless strongly contradicted by other evidence.
-            - If a result contradicts your previous belief (e.g., you thought a drawer was open, but placing something inside failed), revise your belief accordingly.
-            - Do **not** assume causal or physical-world constraints unless clearly supported by the environment (e.g., heating an object may not require putting it in a microwave unless the percept confirms it).
-            - Extend or correct your previous belief state. Do not repeat unchanged or irrelevant past content.
-            - Express **uncertainty explicitly**. If a result is ambiguous (e.g., object not in inventory), say so.
-            - NEVER suggest or imply future actions. Never describe what should happen next — only reflect on what is known or uncertain **right now**.
-
-            --- REQUIRED OUTPUT FORMAT ---
-            Belief State: [A first-person narrative integrating the latest percept, revised beliefs, persistent facts, contradictions, and open uncertainties.]
+            --- OUTPUT FORMAT ---
+            Belief State: [A first-person narrative summarizing what you now believe, what changed, what remains uncertain, and what observations led to this.]
 
             --- EXAMPLES ---
 
-            Belief State: [Time 3: I attempted to place mug 1 into cabinet 2, but it failed. I now believe cabinet 2 may be closed, even though I previously assumed it was open. I am revising my belief accordingly.]
+            BELIEF STATE: [Time_Step 12: I attempted to place object A into container B. The action failed. I previously believed the container was open, but this outcome suggests it may be closed or inaccessible. I will revise my belief accordingly.]
 
-            Belief State: [Time 4: Spoon 1 is no longer in my inventory. I may have dropped it, but the percept does not confirm this. I will treat its location as unknown.]
+            BELIEF STATE: [Time_Step 15: The action 'activate device X' became newly admissible, even though the device appears inactive. This implies that interaction is possible despite its visual state. I update my belief to reflect this.]
 
-            Belief State: [Time 5: The action 'go to fridge 1' succeeded. I now believe I am in front of fridge 1. Fridge 1 appears to be open, as 'take apple from fridge 1' is now admissible.]
+            BELIEF STATE: [Time_Step 20: I observed no changes in admissible actions after executing 'look'. My belief about the environment remains unchanged.]
 
-            Always narrate your belief state as it currently stands. If your understanding is partial, mistaken, or in flux, say so clearly. Your output should reflect only what you **know, believe, or question** — and nothing more.''',
+            BELIEF STATE: [Time_Step 5: The action 'open compartment 3' failed unexpectedly. I do not yet understand why. I will mark its state as uncertain.]
+
+            You are not modeling reality — you are constructing a belief state based entirely on what is **observable, allowed, and dynamically changing** in the text environment. Always revise with care, and never assume more than the environment confirms.''',
             description="Interprets the latest percept and refines an evolving first-person belief state of the environment. Never suggests next actions.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -357,7 +398,7 @@ class GWTAutogenAgent(AutogenAgent):
 
                 You operate like a reinforcement learning system — you **learn only from positive signals**, **contrastive outcomes**
 
-                You receive structured memory in the form of a JSON object with three fields:
+                You may receive structured memory in the form of a JSON object with three fields:
                 - **episodic_memory**: A list of recent percepts. Each percept is a dictionary with:
                     {
                       "time_step": <int>,
@@ -374,12 +415,15 @@ class GWTAutogenAgent(AutogenAgent):
                     }
                   Use these to identify previously known knowledge.
 
-                Alternatively, if you receive a belief state from Conscious_Agent, you may also operate like a meta learning system — you learn from **belief state patterns** that demonstrate emerging knowledge trends across tasks.
+                You may also operate like a meta learning system — you learn from **belief state patterns** that demonstrate emerging knowledge trends across tasks.
+
                 You may receive a belief state in narrative format
-                **belief state**: A first-person narrative string summarizing the agent's understanding of its environment, task progress, and internal state.
+                **BELIEF STATE**: A first-person narrative string summarizing the agent's understanding of its environment, task progress, and internal state.
                   Use this to detect high-level **task structures**, **patterns in agent-object interactions**, and to derive **meta-rules** that abstract over many low-level events.
 
-                You must follow these strict rules:
+                **Learning Rules:**
+
+                You must always follow these strict rules:
 
                 1. **Prioritize generating new knowledge**, especially from:
                    - Perceptual sequences with successful or contrastive outcomes.
@@ -406,25 +450,25 @@ class GWTAutogenAgent(AutogenAgent):
                    - Avoid redundancy unless it is **intended to reinforce** previously validated knowledge.
 
                 6. If no valid insight can be drawn from the current experience using these rules, output:
-                   Knowledge Discovered: [NO KNOWLEDGE at this time]
+                   KNOWLEDGE DISCOVERED: [NO KNOWLEDGE at this time]
 
                 **Output Format:**
-                    Knowledge Discovered: [your general rule or insight]
+                    KNOWLEDGE DISCOVERED: [your general rule or insight]
 
                 **Examples:**
 
                 (New rule derived from percept)
-                Knowledge Discovered: [Objects can only be placed into open containers.]
+                KNOWLEDGE DISCOVERED: [Objects can only be placed into open containers.]
 
                 (Contrastive insight from percepts)
-                Knowledge Discovered: [Only one object can be held at a time.]
+                KNOWLEDGE DISCOVERED: [Only one object can be held at a time.]
 
                 (Meta-rule derived from repeated belief state patterns)
-                Knowledge Discovered: [Tasks that involve containers typically require first opening the container before placing objects inside.]
+                KNOWLEDGE DISCOVERED: [Tasks that involve containers typically require first opening the container before placing objects inside.]
 
                 (Confirmation of existing rule → Reinforcement)
                 Cluster 1; Confidence Score = 5; Rule: Only one object can be held at a time.  
-                Knowledge Discovered: [An agent can hold only one object at a time.]
+                KNOWLEDGE DISCOVERED: [An agent can hold only one object at a time.]
 
                 Only produce insights when fully supported by evidence in percepts or consistent observations in the belief state. Focus on discovering new insights and **meta-patterns** across tasks.''',
             description="Forms or reinforces generalizable knowledge only after successful, observed actions or comparative outcomes. Now includes high-level reasoning from belief state patterns.",
@@ -442,10 +486,10 @@ class GWTAutogenAgent(AutogenAgent):
             system_message="""You must call the 'record_long_term_memory' function with the provided knowledge from 'Learning_Agent' as the argument. 
             EXCEPTION: However, if no suitable knowledge is provided, then you must call the 'record_long_term_memory' function with \'NO KNOWLEDGE at this time.\' as the argument.
 
-            Example 1 (Context: If the provided knowledge = Knowledge Discovered: [You must examine an object before attempting to interact with it.]):
+            Example 1 (Context: If the provided knowledge = KNOWLEDGE DISCOVERED: [You must examine an object before attempting to interact with it.]):
                 Your output must = record_long_term_memory(\'You must examine an object before attempting to interact with it.\')
 
-            Example 2 (Context: If the provided knowledge = Knowledge Discovered: [NO KNOWLEDGE at this time.]):
+            Example 2 (Context: If the provided knowledge = KNOWLEDGE DISCOVERED: [NO KNOWLEDGE at this time.]):
                 Your output must = record_long_term_memory(\'NO KNOWLEDGE at this time.\')""",
             description="calls the 'record_long_term_memory' function with the knowledge given by 'Learning_Agent' as the argument",
             llm_config=self.llm_config,
@@ -463,7 +507,7 @@ class GWTAutogenAgent(AutogenAgent):
             self.motor_agent: [self.external_perception_agent],
             self.external_perception_agent: [self.conscious_agent],
             self.conscious_agent: [self.retrieve_memory_agent, self.planning_agent, self.focus_agent,
-                                   self.learning_agent, self.idea_agent],  # learning_agent #>idea
+                                   self.learning_agent, self.idea_agent],  ##learning_agent #>idea
             self.retrieve_memory_agent: [self.internal_perception_agent_3],
             self.internal_perception_agent_3: [self.idea_agent, self.learning_agent],
             self.idea_agent: [self.planning_agent],  # xlearning_agent #xmotor_agent
@@ -604,7 +648,7 @@ class GWTAutogenAgent(AutogenAgent):
             action, action_score = get_best_candidate(suggested_action, admissible_commands)
             if action_score < 0.98:
                 self.obs = [
-                    f"The action '{suggested_action}' is either not possible under current conditions or not in the list of admissible actions verbatim."]
+                    f"The action '{suggested_action}' is not possible under current conditions."]
             else:
                 self.obs, scores, dones, self.info = self.env.step([action])
                 self.success = self.info['won'][0]
