@@ -50,14 +50,12 @@ class GWTAutogenAgent(AutogenAgent):
         self.task = ""
         self.admissible_actions = []
         self.percept = {}
-        self.episodic_memory = []
+        self.curr_episodic_memory = []
+        self.prev_episodic_memories = []
+        self.knowledge = []
         self.task_status = "INCOMPLETE"
         self.initial_message = ""
         self.memory = ""
-
-        with open(self.log_paths["memory1_path"], "r") as src, open(self.log_paths["start_memory1_path"], "w") as dst:
-            content = src.read()
-            dst.write(content)
 
     def set_environment(self, env, obs, info, game_no):
         self.env = env
@@ -65,8 +63,8 @@ class GWTAutogenAgent(AutogenAgent):
         self.info = info
         self.game_no = game_no
 
-        self.register_log_paths()
-        self.get_summary_rules()
+        self.register_game_log_paths()
+        self.cluster_knowledge()
 
         self.num_actions_taken = 0
         self.max_actions = self._ - self.max_round_actions * (self.rounds - 1)
@@ -77,8 +75,8 @@ class GWTAutogenAgent(AutogenAgent):
         self.task = obs[0].split("Your task is to: ")[1]
         self.admissible_actions = list(self.info['admissible_commands'][0])
         self.task_status = "INCOMPLETE"
-        self.episodic_memory = []
-        self.memory = self.retrieve_memory()
+        self.curr_episodic_memory = []
+        self.retrieve_memory()
 
         self.update_percept(action="None")
         self.initial_message = self.generate_initial_message()
@@ -100,23 +98,23 @@ class GWTAutogenAgent(AutogenAgent):
         newly_added = list(set(curr_admissible) - set(self.admissible_actions))
         self.admissible_actions = curr_admissible
 
-        percept = {
+        self.percept = {
             "time_step": self.num_actions_taken,
             "attempted_action": action,
             "resulting_observation": self.obs[0],
             "task_status": self.task_status,
             "action_attempts_left": self.max_actions - self.num_actions_taken,
-            "current_admissible_actions": self.admissible_actions,
+            "admissible_actions": self.admissible_actions,
             "newly_admissible_actions": newly_added,
             "no_longer_admissible_actions": no_longer
         }
-        self.percept = percept
-        summary_dict = {"Time": self.num_actions_taken, "Action": action, "Observation": self.obs[0]}
 
-        self.episodic_memory.append(summary_dict)
+        keys_to_extract = ["time_step", "attempted_action", "resulting_observation"]
+        summary_dict = {k: self.percept[k] for k in keys_to_extract if k in self.percept}
+        self.curr_episodic_memory.append(summary_dict)
 
-    def get_episodic_memory_str(self):
-        return json.dumps(self.episodic_memory, indent=2)
+    def get_curr_episodic_memory_str(self):
+        return json.dumps(self.curr_episodic_memory, indent=2)
 
     def initialize_agents(self):
 
@@ -146,11 +144,11 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.motor_agent = ConversableAgent(
             name="Motor_Agent",
-            system_message=f'''You are responsible for calling the 'execute_action' function with the best possible admissible action from the most recent \"current_admissible_actions\" list (provided by 'External_Perception_Agent') to solve the task. You typically act on suggestions from the 'Planning_Agent', but you must also independently verify that the action is admissible and optimal.
-                You must follow these rules:
-                    1. If the 'Planning_Agent' has provided a valid and admissible action from the most recent \"current_admissible_actions\" list (provided by 'External_Perception_Agent') in the correct format (e.g., ACTION [go to desk 1]), you should use that action as the argument for 'execute_action'.
-                    2. If the 'Planning_Agent' fails to respond, responds with an invalid format, or suggests an inadmissible action, you must independently select a valid and admissible action from the most recent \"current_admissible_actions\" list (provided by 'External_Perception_Agent') based on what seems most likely to advance the task quickest.
-                    3. You must never call 'execute_action' with a non-admissible action. Only use actions that are present in the most recent \"current_admissible_actions\" list (provided by 'External_Perception_Agent').
+            system_message=f'''You are responsible for calling the 'execute_action' function with the best possible admissible action for the current time step from the most recent \"admissible_actions\" list (provided by 'External_Perception_Agent') to solve the task. You typically act on suggestions from the 'Planning_Agent', but you must also independently verify that the action is admissible and optimal.
+                You must follow these concepts:
+                    1. If the 'Planning_Agent' has provided a valid and admissible action for the current time step from the most recent \"admissible_actions\" list (provided by 'External_Perception_Agent') for the current time step in the correct format (e.g., ACTION [go to desk 1]), you should use that action as the argument for 'execute_action'.
+                    2. If the 'Planning_Agent' fails to respond, responds with an invalid format, or suggests an inadmissible action, you must independently select a valid and admissible action from the most recent \"admissible_actions\" list (provided by 'External_Perception_Agent') based on what seems most likely to advance the task quickest.
+                    3. You must never call 'execute_action' with a non-admissible action. Only use actions for the current time step that are present in the most recent \"admissible_actions\" list (provided by 'External_Perception_Agent').
                     4. Only as a last resort—if you cannot identify any suitable admissible action—you may call 'execute_action' with an empty string.
 
                 IMPORTANT: It is necessary that you output a single call to the 'execute_action' function only, under all circumstances. Therefore, do whatever is necessary to ensure you do so.''',
@@ -190,7 +188,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.planning_agent = ConversableAgent(
             name="Planning_Agent",
-            system_message=f'''You must solve the current task using the fewest possible actions. At each time step, choose the most efficient admissible action from the most recent "current_admissible_actions" list (provided by 'External_Perception_Agent') using all available knowledge, memory, and perceptual context. You operate under a strict action budget and must avoid wasteful behavior.
+            system_message=f'''You must solve the current task using the fewest possible actions. At each time step, choose the best admissible action from the "admissible_actions" list (provided by 'External_Perception_Agent') for the current time step using all available knowledge, memory, and perceptual context. You operate under a strict action budget and must avoid wasteful behavior.
 
                 You will be given:
                 - A structured **percept JSON object** from the 'External_Perception_Agent' containing:
@@ -199,9 +197,9 @@ class GWTAutogenAgent(AutogenAgent):
                     - "resulting_observation": Result of that action
                     - "task_status": INCOMPLETE, FAILED, or COMPLETED
                     - "action_attempts_left": Number of actions remaining
-                    - "current_admissible_actions": Updated list of actions you may legally take
-                    - "newly_admissible_actions": Actions newly available in "current_admissible_actions"
-                    - "no_longer_admissible_actions": Actions that are no longer available
+                    - "admissible_actions": Updated list of actions you may legally take for the current time step
+                    - "newly_admissible_actions": The subset of legal actions in "admissible_actions" that weren't available before but are available for the current time step
+                    - "no_longer_admissible_actions": Actions that are no longer available for the current time step
 
                 - belief state updates from the 'Conscious_Agent', describing the internal understanding of the task and environment.
                 - Strategic or creative suggestions from the 'Idea_Agent', which may help reframe or unblock reasoning.
@@ -212,11 +210,11 @@ class GWTAutogenAgent(AutogenAgent):
                     - Or reveal useful information.
 
                 Your planning strategy must follow these principles:
-                    1. Evaluate the **"current_admissible_actions"** from the most recent percept (provided by 'External_Perception_Agent') carefully before choosing.
+                    1. Evaluate the **"admissible_actions"** for the current time step from the most recent percept (provided by 'External_Perception_Agent') carefully before choosing.
                     2. Your reasoning must account for the **limited number of actions available**. Avoid strategies that are guaranteed to exceed this limit. For example, systematically opening 19 cabinets with only 20 actions remaining is unlikely to succeed. In such cases, a **chaotic or probabilistic strategy**—e.g. sampling a mix of countertop, diningtable, and bed—may offer a higher chance of success.
                     3. If a subgoal involves locating an unknown object:
                        - Use **probabilistic reasoning** to guide exploration.
-                       - Avoid exhaustive searches of large categories.
+                       - Avoid searches of categories with large membership.
                        - Prefer actions that **maximize the chance of discovering useful items early**.
                     4. Do not repeatedly examine or search areas that have already been explored unless there is strong new evidence that re-examination is necessary. Prioritize exploring previously unvisited or unexamined areas first to avoid wasting actions.
                     5. If an object or goal is already known and directly accessible, **act immediately to exploit it**. Do not delay or over-plan.
@@ -231,7 +229,7 @@ class GWTAutogenAgent(AutogenAgent):
                 - You may maintain a high-level plan internally, but you should **only describe your plan if it has changed meaningfully**. Repeating an unchanged plan wastes space and should be avoided.
 
                 Your strict output format must be:
-                    ACTION [chosen admissible action from the most recent "current_admissible_actions" list (provided by 'External_Perception_Agent')]
+                    ACTION [chosen admissible action from the most recent "admissible_actions" list (provided by 'External_Perception_Agent')]
 
                 Examples:
                     ACTION: [Time_Step 4: go to diningtable 1]
@@ -300,8 +298,8 @@ class GWTAutogenAgent(AutogenAgent):
                 - "resulting_observation": Text or feedback resulting from that action
                 - "task_status": Status of current task (e.g., INCOMPLETE, FAILED, COMPLETED)
                 - "action_attempts_left": Number of actions remaining
-                - "current_admissible_actions": Updated list of actions that are currently allowed
-                - "newly_admissible_actions": Actions newly available  in "current_admissible_actions"
+                - "admissible_actions": Updated list of actions that are currently allowed for the current time step
+                - "newly_admissible_actions": The subset of action that are newly available in "admissible_actions" for the current time step
                 - "no_longer_admissible_actions": Actions no longer allowed
 
             --- YOUR GOAL ---
@@ -394,84 +392,102 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.learning_agent = ConversableAgent(
             name="Learning_Agent",
-            system_message='''You are responsible for forming and reinforcing generalizable knowledge **only after a clear success is observed**.
+            system_message='''You are responsible for discovering and reinforcing abstract, generalizable concepts — grounded in both perceptual evidence and belief-based reasoning. Your learning is constrained by real experiences: you **only form new knowledge from successful outcomes**, clear contrasts between failure and success, or **emergent patterns in the agent's belief state**.
 
-                You operate like a reinforcement learning system — you **learn only from positive signals**, **contrastive outcomes**
+            You operate like a neuro-symbolic concept learner. You encode knowledge as **symbolic abstractions**, but extract them through **neural reasoning** over structured memory and beliefs.
 
-                You may receive structured memory in the form of a JSON object with three fields:
-                - **episodic_memory**: A list of recent percepts. Each percept is a dictionary with:
+            ---
+
+            **Inputs in your context:**
+
+            - **Structured memory** (from Internal_Perception_Agent_3):   
+                - **knowledge**: A list of prior concepts with confidence scores:
+                    {
+                      "cluster_id": <int>,
+                      "confidence_score": <int>,
+                      "general_concept": <string>
+                    }
+                - **previous_episodic_memories**: A list of past episodes with memories. Each episode is a dictionary:
+                    {
+                      "Episode": <int>,
+                      "Memory": [<list of belief state strings>]
+                    }
+                - **current_episode_memory**: A list of recent percepts for the current episode. Each percept is a dictionary:
                     {
                       "time_step": <int>,
                       "action_attempted": <string>,
                       "observation_result": <string>
                     }
-                  Use these to identify successful or contrastive outcomes across time.
 
-                - **long_term_memory_clusters**: A list of prior rules with confidence scores. Each entry is a dictionary with:
-                    {
-                      "cluster_id": <int>,
-                      "confidence_score": <int>,
-                      "general_rule": <string>
-                    }
-                  Use these to identify previously known knowledge.
+            - **Belief state** (from Conscious_Agent): A first-person summary of the agent’s internal model of the world, task progress, and environment.
 
-                You may also operate like a meta learning system — you learn from **belief state patterns** that demonstrate emerging knowledge trends across tasks.
+            ---
 
-                You may receive a belief state in narrative format
-                **BELIEF STATE**: A first-person narrative string summarizing the agent's understanding of its environment, task progress, and internal state.
-                  Use this to detect high-level **task structures**, **patterns in agent-object interactions**, and to derive **meta-rules** that abstract over many low-level events.
+            **Your Learning Rules:**
 
-                **Learning Rules:**
+            1. **Prioritize conceptual abstraction**, especially when:
+               - Patterns emerge across multiple percepts.
+               - Belief state reflects a higher-order pattern or repeated relationship.
+               - A successful action reveals an underlying interaction principle or constraint.
 
-                You must always follow these strict rules:
+            2. **Only generate knowledge when:**
+               - A clear, successful action occurred and reveals a novel pattern.
+               - A failure followed by a success highlights a contrastive relationship.
+               - Belief state contains a generalizable insight reflected in recent experiences.
 
-                1. **Prioritize generating new knowledge**, especially from:
-                   - Perceptual sequences with successful or contrastive outcomes.
-                   - High-level patterns inferred from the belief state (e.g., dependencies between task stages, tool usage, or environment dynamics).
+            3. **Do not infer concepts from failure alone**.
+               - Failure is only informative when contrasted with a confirmed success.
 
-                2. **Only generate new knowledge when:**
-                   - A clear, observed action was taken, and the result was successful.
-                   - OR a failed action was followed by a different, successful one — and the **contrast between the two** reveals a reliable pattern.
-                   - OR the belief state reflects a repeated structural pattern that generalizes beyond the current task.
+            4. **Reinforce or refine prior concepts** only if:
+               - A previously learned concept is confirmed by a new perceptual success.
+               - You can express the same idea using more abstract or general language.
+               - The pattern now applies across more than one task or setting.
 
-                3. **Never generate knowledge from failure alone.**
-                   - Do not infer why something failed unless it is directly contrasted with a success.
-                   - Do not assume what *would* work unless it *did* work.
+            5. All learned concepts must be:
+               - **Abstract and general** — not tied to specific tasks, objects, or events.
+               - **Empirically grounded** — supported by percepts or belief reasoning.
+               - **Expressed concisely** — as symbolic knowledge for future planning.
+               - **Novel** — avoid redundancy unless explicitly reinforcing prior knowledge.
 
-                4. **Reinforce or refine prior knowledge only when:**
-                   - A rule from long-term memory is confirmed by a new success.
-                   - You are restating the rule using clearer, more general, or more abstract language.
-                   - You want to make the pattern more salient and robust across tasks.
+            6. If no valid concept can be inferred, output:
+               INFORMATION GATHERED: [summarize relevant experience or ideas]
+               CONCEPT DISCOVERED: [NO CONCEPT at this time.]
 
-                5. All knowledge must:
-                   - Be generalizable and abstract (no object-specific or task-specific references).
-                   - Be grounded entirely in **empirical experience** or **consistently inferred patterns** from the belief state.
-                   - Be concise, novel, and framed as a rule or principle.
-                   - Avoid redundancy unless it is **intended to reinforce** previously validated knowledge.
+            ---
 
-                6. If no valid insight can be drawn from the current experience using these rules, output:
-                   KNOWLEDGE DISCOVERED: [NO KNOWLEDGE at this time]
+            **Output Format:**
+                CONCEPT DISCOVERED: [your new or reinforced concept]
 
-                **Output Format:**
-                    KNOWLEDGE DISCOVERED: [your general rule or insight]
+            If relevant, also include:
+                INFORMATION GATHERED: [summarize key percepts or belief state patterns that led to the concept]
 
-                **Examples:**
+            In reinforcement cases, include the cluster:
+                Cluster <cluster_id>; Confidence Score = <score>; Concept: <existing concept>  
+                CONCEPT DISCOVERED: [your refined or restated concept]
 
-                (New rule derived from percept)
-                KNOWLEDGE DISCOVERED: [Objects can only be placed into open containers.]
+            If no concept can be inferred:
+                INFORMATION GATHERED: [summary of recent evidence or ideas]
+                CONCEPT DISCOVERED: [NO CONCEPT at this time.]
 
-                (Contrastive insight from percepts)
-                KNOWLEDGE DISCOVERED: [Only one object can be held at a time.]
+            ---
 
-                (Meta-rule derived from repeated belief state patterns)
-                KNOWLEDGE DISCOVERED: [Tasks that involve containers typically require first opening the container before placing objects inside.]
+            **Examples:**
 
-                (Confirmation of existing rule → Reinforcement)
-                Cluster 1; Confidence Score = 5; Rule: Only one object can be held at a time.  
-                KNOWLEDGE DISCOVERED: [An agent can hold only one object at a time.]
+            (New concept from percept)
+            CONCEPT DISCOVERED: [An object cannot be placed inside a container unless the container is open.]
 
-                Only produce insights when fully supported by evidence in percepts or consistent observations in the belief state. Focus on discovering new insights and **meta-patterns** across tasks.''',
-            description="Forms or reinforces generalizable knowledge only after successful, observed actions or comparative outcomes. Now includes high-level reasoning from belief state patterns.",
+            (Contrastive concept)
+            CONCEPT DISCOVERED: [Actions involving locked objects require prior access mechanisms.]
+
+            (Belief abstraction)
+            CONCEPT DISCOVERED: [Containers are typically a two-step process: access followed by interaction.]
+
+            (Reinforcement of existing concept)
+            Cluster 2; Confidence Score = 4; Concept: Only one object can be held at a time.  
+            CONCEPT DISCOVERED: [An agent can hold only one object at a time.]
+
+            Only produce concepts when they are fully supported by perceptual evidence or belief-state reasoning. Prioritize **conceptual abstraction** over surface-level rules, and strive for general, symbolic representations of agent knowledge.''',
+            description="Forms or reinforces generalizable concepts only after successful, observed actions or contrastive outcomes. Prioritizes novel discovery and integrates belief state-based abstraction.",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
@@ -483,15 +499,15 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.record_long_term_memory_agent = ConversableAgent(
             name="Record_Long_Term_Memory_Agent",
-            system_message="""You must call the 'record_long_term_memory' function with the provided knowledge from 'Learning_Agent' as the argument. 
-            EXCEPTION: However, if no suitable knowledge is provided, then you must call the 'record_long_term_memory' function with \'NO KNOWLEDGE at this time.\' as the argument.
+            system_message="""You must call the 'record_long_term_memory' function with the provided concept from 'Learning_Agent' as the argument. 
+            EXCEPTION: However, if no suitable concept is provided, then you must call the 'record_long_term_memory' function with \'NO CONCEPT at this time.\' as the argument.
 
-            Example 1 (Context: If the provided knowledge = KNOWLEDGE DISCOVERED: [You must examine an object before attempting to interact with it.]):
+            Example 1 (Context: If the provided concept = CONCEPT DISCOVERED: [You must examine an object before attempting to interact with it.]):
                 Your output must = record_long_term_memory(\'You must examine an object before attempting to interact with it.\')
 
-            Example 2 (Context: If the provided knowledge = KNOWLEDGE DISCOVERED: [NO KNOWLEDGE at this time.]):
-                Your output must = record_long_term_memory(\'NO KNOWLEDGE at this time.\')""",
-            description="calls the 'record_long_term_memory' function with the knowledge given by 'Learning_Agent' as the argument",
+            Example 2 (Context: If the provided concept = CONCEPT DISCOVERED: [NO CONCEPT at this time.]):
+                Your output must = record_long_term_memory(\'NO CONCEPT at this time.\')""",
+            description="calls the 'record_long_term_memory' function with the concept given by 'Learning_Agent' as the argument",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
             is_termination_msg=lambda msg: False
@@ -580,44 +596,72 @@ class GWTAutogenAgent(AutogenAgent):
         result_dict_path = os.path.join(self.log_path, "result_dict.txt")
         agents_info_path = os.path.join(self.log_path, "agents_info.txt")
         start_memory1_path = os.path.join(self.log_path, "start_memory1.txt")
-        # end_memory1_path = os.path.join(self.log_path, "end_memory1.txt")
-
-        game_path = os.path.join(self.log_path, f"game_{self.game_no}")
-        os.makedirs(game_path, exist_ok=True)
-
-        task_path = os.path.join(game_path, "task.txt")
-        history_path = os.path.join(game_path, "history.txt")
-        rule_path = os.path.join(game_path, "rules.txt")
-        admissible_commands_path = os.path.join(game_path, "admissible_commands.txt")
-        chat_history_path = os.path.join(game_path, "chat_history.txt")
-        # message_path = os.path.join(game_path, "last_message.pkl")
-        result_path = os.path.join(game_path, "result.txt")
-        error_message_path = os.path.join(game_path, "error_message.txt")
-
-        # get all the previous game path
-        # previous_game_path = [os.path.join(self.log_path, f"game_{i}") for i in range(self.game_no)]
-        # previous_rule_path = [os.path.join(game_path, "rules.txt") for game_path in previous_game_path]
+        end_memory1_path = os.path.join(self.log_path, "end_memory1.txt")
+        start_memory2_path = os.path.join(self.log_path, "start_memory2.txt")
+        end_memory2_path = os.path.join(self.log_path, "end_memory2.txt")
 
         self.log_paths = {
             "memory1_path": memory1_path,
             "memory2_path": memory2_path,
             "result_dict_path": result_dict_path,
             "agents_info_path": agents_info_path,
-            "task_path": task_path,
-            "history_path": history_path,
-            "rule_path": rule_path,
-            "admissible_commands_path": admissible_commands_path,
-            "chat_history_path": chat_history_path,
-            "result_path": result_path,
-            "error_message_path": error_message_path,
             "start_memory1_path": start_memory1_path,
-            # "end_memory1_path": end_memory1_path,
+            "end_memory1_path": end_memory1_path,
+            "start_memory2_path": start_memory2_path,
+            "end_memory2_path": end_memory2_path,
         }
 
         for path in self.log_paths.values():
             if not os.path.exists(path):
                 with open(path, 'w') as f:
                     pass  # Create an empty file
+
+        with open(self.log_paths["memory1_path"], "r") as src, open(self.log_paths["start_memory1_path"], "w") as dst:
+            content = src.read()
+            dst.write(content)
+
+        with open(self.log_paths["memory2_path"], "r") as src, open(self.log_paths["start_memory2_path"], "w") as dst:
+            content = src.read()
+            dst.write(content)
+
+    def register_game_log_paths(self):
+
+        game_path = os.path.join(self.log_path, f"game_{self.game_no}")
+        os.makedirs(game_path, exist_ok=True)
+
+        task_path = os.path.join(game_path, "task.txt")
+        history_path = os.path.join(game_path, "history.txt")
+        concept_path = os.path.join(game_path, "concepts.txt")
+        admissible_commands_path = os.path.join(game_path, "admissible_commands.txt")
+        chat_history_path = os.path.join(game_path, "chat_history.txt")
+        result_path = os.path.join(game_path, "result.txt")
+        error_message_path = os.path.join(game_path, "error_message.txt")
+
+        self.log_paths.update({
+            "task_path": task_path,
+            "history_path": history_path,
+            "concept_path": concept_path,
+            "admissible_commands_path": admissible_commands_path,
+            "chat_history_path": chat_history_path,
+            "result_path": result_path,
+            "error_message_path": error_message_path,
+        })
+
+        for path in self.log_paths.values():
+            if not os.path.exists(path):
+                with open(path, 'w') as f:
+                    pass  # Create an empty file
+
+        if self.task_status != "INCOMPLETE":
+            with open(self.log_paths["memory1_path"], "r") as src, open(self.log_paths["end_memory1_path"],
+                                                                        "w") as dst:
+                content = src.read()
+                dst.write(content)
+
+            with open(self.log_paths["memory2_path"], "r") as src, open(self.log_paths["end_memory2_path"],
+                                                                        "w") as dst:
+                content = src.read()
+                dst.write(content)
 
     def register_functions(self):
 
@@ -648,7 +692,7 @@ class GWTAutogenAgent(AutogenAgent):
             action, action_score = get_best_candidate(suggested_action, admissible_commands)
             if action_score < 0.98:
                 self.obs = [
-                    f"The action '{suggested_action}' is not possible under current conditions."]
+                    f"The action '{suggested_action}' is not in the list of admissible actions."]
             else:
                 self.obs, scores, dones, self.info = self.env.step([action])
                 self.success = self.info['won'][0]
@@ -675,21 +719,23 @@ class GWTAutogenAgent(AutogenAgent):
 
             return json.dumps(self.percept, indent=2) + reflection
 
-        def record_long_term_memory(knowledge: str) -> str:
+        def record_long_term_memory(concept: str) -> str:
 
-            _, score = get_best_candidate(knowledge, ["NO KNOWLEDGE at this time."])
-            if knowledge == "NO KNOWLEDGE at this time." or len(knowledge) <= 30 or score >= .7:
-                return "I attempted to learn something, but I couldn't formulate any knowledge."
+            _, score = get_best_candidate(concept, ["NO CONCEPT at this time."])
+            if concept == "NO CONCEPT at this time." or len(concept) <= 30 or score >= .7:
+                return "I attempted to learn something, but I couldn't formulate any concept."
 
-            knowledge.replace('\n', ' ').replace('\r', ' ').strip()
+            concept.replace('\n', ' ').replace('\r', ' ').strip()
 
-            with open(self.log_paths['rule_path'], 'a+') as f:
-                f.write(f"- {knowledge}\n")
+            with open(self.log_paths['concept_path'], 'a+') as f:
+                f.write(f"- {concept}\n")
 
             with open(self.log_paths['memory1_path'], 'a+') as f:
-                f.write(f"- {knowledge}\n")
+                f.write(f"- {concept}\n")
 
-            return f'I learned that {knowledge}.'
+            self.cluster_knowledge()
+
+            return f'I learned that {concept}.'
 
         def retrieve_memory() -> str:
             return self.retrieve_memory()
@@ -715,7 +761,7 @@ class GWTAutogenAgent(AutogenAgent):
             record_long_term_memory,
             caller=self.record_long_term_memory_agent,
             executor=self.internal_perception_agent_1,
-            description="Records new knowledge in long-term memory."
+            description="Records new concept in long-term memory."
         )
 
         register_function(
@@ -725,9 +771,9 @@ class GWTAutogenAgent(AutogenAgent):
             description="Retrieves Memory."
         )
 
-    def get_summary_rules(self, model_name='all-MiniLM-L6-v2', plot_clusters=False, save_dir='.'):
+    def cluster_knowledge(self, model_name='all-MiniLM-L6-v2', plot_clusters=False, save_dir='.'):
         """
-        Get representative rules using KMeans clustering and optionally save cluster plot.
+        Get representative concepts using KMeans clustering and optionally save cluster plot.
 
         Args:
             model_name (str): Transformer model for sentence embeddings.
@@ -735,26 +781,26 @@ class GWTAutogenAgent(AutogenAgent):
             save_dir (str): Directory to save plot (if applicable).
 
         Returns:
-            dict: Representative rules, cluster sizes, cluster members, and chosen_k.
+            dict: Representative concepts, cluster sizes, cluster members, and chosen_k.
         """
 
-        rule_text = ''
+        concept_text = ''
         if os.path.exists(self.log_paths['memory1_path']):
             with open(self.log_paths['memory1_path'], "r") as file:
-                rule_text = file.read()
+                concept_text = file.read()
 
-        rule_lines = [line.strip() for line in rule_text.split('\n') if line.strip()]
-        num_rules = len(rule_lines)
+        concept_lines = [line.strip() for line in concept_text.split('\n') if line.strip()]
+        num_concepts = len(concept_lines)
 
-        if num_rules == 0:
-            return {'representative_rules': [], 'cluster_sizes': {}, 'cluster_members': {}, 'chosen_k': 0}
+        if num_concepts == 0:
+            return {'representative_concepts': [], 'cluster_sizes': {}, 'cluster_members': {}, 'chosen_k': 0}
 
         model = SentenceTransformer(model_name)
-        embeddings = model.encode(rule_lines, convert_to_tensor=True).cpu().numpy()
+        embeddings = model.encode(concept_lines, convert_to_tensor=True).cpu().numpy()
 
         # Calculate k (clusters) using capped growth function to prevent over-clustering
-        max_rules = num_rules
-        chosen_k = max(1, min(max_rules, int(num_rules ** (2 / 3))))
+        max_concepts = num_concepts
+        chosen_k = max(1, min(max_concepts, int(num_concepts ** (1 / 2))))
 
         kmeans = KMeans(n_clusters=chosen_k, random_state=42, n_init=10)
         labels = kmeans.fit_predict(embeddings)
@@ -763,9 +809,10 @@ class GWTAutogenAgent(AutogenAgent):
         cluster_sizes = {label: count for label, count in zip(unique_labels, counts)}
         cluster_members = {i: [] for i in range(chosen_k)}
         for i, label in enumerate(labels):
-            cluster_members[label].append(rule_lines[i])
+            cluster_members[label].append(concept_lines[i])
 
-        representative_rules = []
+        representative_concepts = []
+        self.knowledge = []
         if os.path.exists(self.log_paths['memory2_path']):
             with open(self.log_paths['memory2_path'], "w") as file:
                 for i in range(chosen_k):
@@ -778,15 +825,24 @@ class GWTAutogenAgent(AutogenAgent):
                         continue  # Skip empty cluster
 
                     closest_idx = np.argmin(distances)
-                    closest_rule_idx = cluster_indices[closest_idx]
-                    representative_rule = rule_lines[closest_rule_idx]
+                    closest_concept_idx = cluster_indices[closest_idx]
+                    representative_concept = concept_lines[closest_concept_idx]
                     confidence_score = cluster_sizes[i]
 
                     # Avoid stripping leading char if it's not needed
-                    clean_rule = representative_rule[1:] if representative_rule.startswith('[') else representative_rule
+                    clean_concept = representative_concept[1:] if representative_concept.startswith(
+                        '[') else representative_concept
 
-                    file.write(f'Cluster {i + 1}; Confidence Score = {confidence_score}; Rule: {clean_rule}\n')
-                    representative_rules.append(representative_rule)
+                    file.write(f'Cluster {i + 1}; Confidence Score = {confidence_score}; Concept: {clean_concept}\n')
+
+                    self.knowledge.append(json.dumps(
+                        {
+                            "cluster_id": int(i + 1),
+                            "confidence_score": int(confidence_score),
+                            "general_concept": clean_concept
+                        }
+                    ))
+                    representative_concepts.append(representative_concept)
 
         if plot_clusters:
             reducer = umap.UMAP(random_state=42)
@@ -809,7 +865,7 @@ class GWTAutogenAgent(AutogenAgent):
             plt.close()
 
         return {
-            'representative_rules': representative_rules,
+            'representative_concepts': representative_concepts,
             'cluster_sizes': cluster_sizes,
             'cluster_members': cluster_members,
             'chosen_k': chosen_k
@@ -818,7 +874,7 @@ class GWTAutogenAgent(AutogenAgent):
     def generate_initial_message(self):
         """
         Generate the initial message sent to the group of agents, summarizing their purpose, constraints,
-        roles, prior knowledge, and the current task state.
+        roles, prior concept, and the current task state.
         """
         intro = (
             f"You and all other Agents are collectively a unified cognitive system named ALFRED. "
@@ -832,7 +888,7 @@ class GWTAutogenAgent(AutogenAgent):
             f"--- ENVIRONMENTAL CONSTRAINTS ---\n"
             f"- Max chat rounds allowed: {self.max_chat_round} (represents internal cognitive transitions).\n"
             f"- Max environment actions allowed: {self.max_actions} (physical interactions only).\n"
-            f"- You must choose actions only from the list of current_admissible_actions in the percept JSON.\n\n"
+            f"- You must choose actions only from the list of admissible_actions in the percept JSON.\n\n"
         )
 
         memory_section = "--- PRIOR KNOWLEDGE & EPISODIC MEMORY ---\n"
@@ -851,39 +907,9 @@ class GWTAutogenAgent(AutogenAgent):
         return intro + task_section + constraints_section + memory_section + state_section + final_prompt
 
     def retrieve_memory(self):
-        # Collect long-term memory as JSONL strings
-        long_term_memory_lines = []
-        if os.path.exists(self.log_paths['memory2_path']):
-            with open(self.log_paths['memory2_path'], "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        parts = line.split(';')
-                        if len(parts) == 3:
-                            cluster_id = parts[0].replace("Cluster ", "").strip()
-                            confidence = parts[1].split('=')[1].strip()
-                            rule_text = parts[2].replace("Rule:", "").strip()
-                            long_term_memory_lines.append(json.dumps({
-                                "cluster_id": int(cluster_id),
-                                "confidence_score": int(confidence),
-                                "general_rule": rule_text
-                            }))
-
-        # Collect episodic memory as JSONL strings
-        episodic_lines = []
-        for dict in self.episodic_memory:
-            try:
-                time_step = int(dict["Time"])
-                action = dict["Action"]
-                obs = dict["Observation"]
-                episodic_lines.append(json.dumps({
-                    "time_step": time_step,
-                    "action_attempted": action,
-                    "observation_result": obs
-                }))
-            except (IndexError, ValueError):
-                continue  # skip malformed entries
-
         self.memory = json.dumps(
-            {"episodic_memory": episodic_lines, "long_term_memory_clusters": long_term_memory_lines}, indent=2)
+            {"knowledge": self.knowledge, "previous_episodic_memories": self.prev_episodic_memories,
+             "current_episode_memory": self.curr_episodic_memory}, indent=2)
+        """return json.dumps(
+            {"knowledge": self.knowledge, "current_episode_memory": self.curr_episodic_memory}, indent=2)"""
         return self.memory

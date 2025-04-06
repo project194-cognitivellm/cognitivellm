@@ -22,9 +22,9 @@ from gwt_agent import GWTAutogenAgent
 from baseline_agent import BaselineAutogenAgent
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 
-global_num_games_to_evaluate = 139
-global_max_actions_per_game = 60
-global_max_chat_rounds_per_game = 450
+global_num_games_to_evaluate = 20
+global_max_actions_per_game = 65
+global_max_chat_rounds_per_game = 500
 global_split_rounds_per_game = 1
 base_path = os.path.join("runs", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 os.makedirs(base_path, exist_ok=True)
@@ -190,13 +190,12 @@ if __name__ == "__main__":
                         with open(log_paths['chat_history_path'], "w") as f:
                             f.write("Error Message: no chat history in chat result\n")
 
-                    transition_pattern = r"name: [\w_]+"
-                    transitions = []
-
-                    # Read the chat history to extract transitions
+                    # Read the chat history to extract meta-data
                     with open(log_paths['chat_history_path'], "r") as f:
                         chat_text = f.read()
 
+                    transitions = []
+                    transition_pattern = r"name: [\w_]+"
                     matches = re.findall(transition_pattern, chat_text)
                     for idx in range(len(matches) - 1):
                         transitions.append({
@@ -210,6 +209,11 @@ if __name__ == "__main__":
                                                    "transition_log.json")
                     with open(transition_path, "w") as f:
                         json.dump(transitions, f, indent=2)
+
+
+                    belief_state_pattern = r"Belief State: (.*)"
+                    matches = re.findall(belief_state_pattern, chat_text, re.IGNORECASE)
+                    agent.prev_episodic_memories.append({"episode": num_games_evaluated, "memory": matches})
 
                     # Evaluate and log success
                     elapsed_minutes = (end_time - start_time) / 60
@@ -257,6 +261,7 @@ if __name__ == "__main__":
                     print(f"Runtime: {elapsed_minutes:.2f} minutes")
                     print(f"Rounds Taken: {global_split_rounds_per_game - agent.rounds_left} out of {global_split_rounds_per_game}")
                     print(f"Actions Taken: {agent.num_actions_taken} out of {global_max_actions_per_game}")
+                    print(f"Chat Rounds Taken: {chat_round_list[-1]}")
                     print(f"Success Rate: {num_successes}/{num_games_evaluated} = {100 * success_rate:.2f}%")
                     print(f"Average Actions per Successful Game: {avg_actions_taken_per_successful_game:.2f} out of {global_max_actions_per_game}")
                     print(f"Average Chat Rounds per Successful Game: {avg_chat_rounds_per_successful_game:.2f} out of {global_max_chat_rounds_per_game}")
