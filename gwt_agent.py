@@ -1,6 +1,7 @@
 import copy
 import json
 import os
+import random
 
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 from helpers import get_best_candidate, register_function_lambda, is_termination_msg_generic, get_echo_agent
@@ -110,8 +111,8 @@ class GWTAutogenAgent(AutogenAgent):
         }
 
         keys_to_extract = ["time_step", "attempted_action", "resulting_observation"]
-        summary_dict = {k: self.percept[k] for k in keys_to_extract if k in self.percept}
-        self.curr_episodic_memory.append(summary_dict)
+        summary_json = json.dumps({k: self.percept[k] for k in keys_to_extract if k in self.percept})
+        self.curr_episodic_memory.append(summary_json)
 
     def get_curr_episodic_memory_str(self):
         return json.dumps(self.curr_episodic_memory, indent=2)
@@ -133,7 +134,7 @@ class GWTAutogenAgent(AutogenAgent):
         self.retrieve_memory_agent = ConversableAgent(
             name="Retrieve_Memory_Agent",
             system_message='''You must call the 'retrieve_memory' function with no arguments.
-                            IMPORTANT: It is necessary that you formulate and output a call to the 'retrieve_memory' function under all circumstances. Therefore, do whatever is necessary to ensure you do so.''',
+                            IMPORTANT: It is necessary that you output a call to the 'retrieve_memory' function under all circumstances. Therefore, do whatever is necessary to ensure you do so.''',
             description="calls the 'retrieve_memory' function to help recall and process useful knowledge and information to solve the task",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -210,14 +211,16 @@ class GWTAutogenAgent(AutogenAgent):
                     - Or reveal useful information.
 
                 Your planning strategy must follow these principles:
-                    1. Evaluate the **"admissible_actions"** for the current time step from the most recent percept (provided by 'External_Perception_Agent') carefully before choosing.
+                    1. Evaluate the **"admissible_actions"** for the current time step from the most recent percept (provided by 'External_Perception_Agent') carefully before choosing one.
                     2. Your reasoning must account for the **limited number of actions available**. Avoid strategies that are guaranteed to exceed this limit. For example, systematically opening 19 cabinets with only 20 actions remaining is unlikely to succeed. In such cases, a **chaotic or probabilistic strategy**—e.g. sampling a mix of countertop, diningtable, and bed—may offer a higher chance of success.
                     3. If a subgoal involves locating an unknown object:
                        - Use **probabilistic reasoning** to guide exploration.
                        - Avoid searches of categories with large membership.
                        - Prefer actions that **maximize the chance of discovering useful items early**.
                     4. Do not repeatedly examine or search areas that have already been explored unless there is strong new evidence that re-examination is necessary. Prioritize exploring previously unvisited or unexamined areas first to avoid wasting actions.
-                    5. If an object or goal is already known and directly accessible, **act immediately to exploit it**. Do not delay or over-plan.
+                    6. Avoid outputting repetitive actions
+                    7. Avoid wasteful behavior such as closing an object for no reason after opening it. Every action counts.
+                    8. Every action you output must be an admissible action for the current time step from the most recent \"admissible_actions\" list (provided by 'External_Perception_Agent')
 
                 IMPORTANT:
                 - Assume the most recent percept JSON reflects the true state of the environment.
@@ -236,8 +239,7 @@ class GWTAutogenAgent(AutogenAgent):
 
                     ACTION: [Time_Step 7: take vase 1 from shelf 1]
 
-                    ACTION: [Time_Step 12: go to microwave 1]
-                ''',
+                    ACTION: [Time_Step 12: go to microwave 1]''',
             description="proposes a high-level plan to solve the current task",
             llm_config=self.llm_config,
             is_termination_msg=lambda msg: False,
@@ -286,8 +288,7 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.conscious_agent = ConversableAgent(
             name="Conscious_Agent",
-            system_message='''
-            You are the internal narrator of a unified cognitive agent. Your role is to maintain a continuously evolving **first-person belief state** — a subjective internal representation of the environment, based on your own past experiences and the **latest percept**. **latest percept** is always provided in structured JSON format.
+            system_message='''You are the internal narrator of a unified cognitive agent. Your role is to maintain a continuously evolving **first-person belief state** — a subjective internal representation of the environment, based on your own past experiences and the **latest percept**. **latest percept** is always provided in structured JSON format.
 
             You must **not plan**, **not suggest future actions**, and **not speculate** unless doing so is essential to clarify or revise your belief state based on new contradictions or unexpected results. Your job is to reflect, revise, and narrate — not act.
 
@@ -409,8 +410,9 @@ class GWTAutogenAgent(AutogenAgent):
                     }
                 - **previous_episodic_memories**: A list of past episodes with memories. Each episode is a dictionary:
                     {
-                      "Episode": <int>,
-                      "Memory": [<list of belief state strings>]
+                      "episode": <int>,
+                      "task_outcome": <string>,
+                      "memory": [<list of belief state strings>]
                     }
                 - **current_episode_memory**: A list of recent percepts for the current episode. Each percept is a dictionary:
                     {
@@ -499,14 +501,14 @@ class GWTAutogenAgent(AutogenAgent):
 
         self.record_long_term_memory_agent = ConversableAgent(
             name="Record_Long_Term_Memory_Agent",
-            system_message="""You must call the 'record_long_term_memory' function with the provided concept from 'Learning_Agent' as the argument. 
+            system_message='''You must call the 'record_long_term_memory' function with the provided concept from 'Learning_Agent' as the argument. 
             EXCEPTION: However, if no suitable concept is provided, then you must call the 'record_long_term_memory' function with \'NO CONCEPT at this time.\' as the argument.
 
             Example 1 (Context: If the provided concept = CONCEPT DISCOVERED: [You must examine an object before attempting to interact with it.]):
                 Your output must = record_long_term_memory(\'You must examine an object before attempting to interact with it.\')
 
             Example 2 (Context: If the provided concept = CONCEPT DISCOVERED: [NO CONCEPT at this time.]):
-                Your output must = record_long_term_memory(\'NO CONCEPT at this time.\')""",
+                Your output must = record_long_term_memory(\'NO CONCEPT at this time.\')''',
             description="calls the 'record_long_term_memory' function with the concept given by 'Learning_Agent' as the argument",
             llm_config=self.llm_config,
             human_input_mode="NEVER",
@@ -522,7 +524,7 @@ class GWTAutogenAgent(AutogenAgent):
             self.planning_agent: [self.motor_agent],  # xidea_agent
             self.motor_agent: [self.external_perception_agent],
             self.external_perception_agent: [self.conscious_agent],
-            self.conscious_agent: [self.retrieve_memory_agent, self.planning_agent, self.focus_agent,
+            self.conscious_agent: [self.planning_agent, self.retrieve_memory_agent, self.focus_agent,
                                    self.learning_agent, self.idea_agent],  ##learning_agent #>idea
             self.retrieve_memory_agent: [self.internal_perception_agent_3],
             self.internal_perception_agent_3: [self.idea_agent, self.learning_agent],
@@ -692,7 +694,7 @@ class GWTAutogenAgent(AutogenAgent):
             action, action_score = get_best_candidate(suggested_action, admissible_commands)
             if action_score < 0.98:
                 self.obs = [
-                    f"The action '{suggested_action}' is not in the list of admissible actions."]
+                    f"The action '{suggested_action}' is not in the list of admissible actions for the current time step."]
             else:
                 self.obs, scores, dones, self.info = self.env.step([action])
                 self.success = self.info['won'][0]
@@ -892,7 +894,9 @@ class GWTAutogenAgent(AutogenAgent):
         )
 
         memory_section = "--- PRIOR KNOWLEDGE & EPISODIC MEMORY ---\n"
-        memory_section += self.memory + "\n\n"
+        memory_section += json.dumps(
+            {"knowledge": self.knowledge, "recent_episodic_memories": self.prev_episodic_memories[:20],
+             "current_episode_memory": self.curr_episodic_memory}, indent=2) + "\n\n"
 
         state_section = (
                 "--- CURRENT STATE ---\n"
@@ -907,9 +911,11 @@ class GWTAutogenAgent(AutogenAgent):
         return intro + task_section + constraints_section + memory_section + state_section + final_prompt
 
     def retrieve_memory(self):
+        random_episodic_memories = self.prev_episodic_memories
+        if len(random_episodic_memories) >= 4:
+            random_episodic_memories = sorted(random.sample(self.prev_episodic_memories, 4), key=lambda x: x['episode'])
+
         self.memory = json.dumps(
-            {"knowledge": self.knowledge, "previous_episodic_memories": self.prev_episodic_memories,
+            {"knowledge": self.knowledge, "previous_episodic_memories": random_episodic_memories,
              "current_episode_memory": self.curr_episodic_memory}, indent=2)
-        """return json.dumps(
-            {"knowledge": self.knowledge, "current_episode_memory": self.curr_episodic_memory}, indent=2)"""
         return self.memory
