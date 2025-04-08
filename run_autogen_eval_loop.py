@@ -23,7 +23,7 @@ from baseline_agent import BaselineAutogenAgent
 from autogen import ConversableAgent, register_function, GroupChat, GroupChatManager
 
 global_num_games_to_evaluate = 139
-global_max_actions_per_game = 65
+global_max_actions_per_game = 60
 global_max_chat_rounds_per_game = 500
 global_split_rounds_per_game = 1
 base_path = os.path.join("runs", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -195,7 +195,7 @@ if __name__ == "__main__":
                         chat_text = f.read()
 
                     transitions = []
-                    transition_pattern = r"name: [\w_]+"
+                    transition_pattern = r"name: (.*)"
                     matches = re.findall(transition_pattern, chat_text)
                     for idx in range(len(matches) - 1):
                         transitions.append({
@@ -209,7 +209,6 @@ if __name__ == "__main__":
                                                    "transition_log.json")
                     with open(transition_path, "w") as f:
                         json.dump(transitions, f, indent=2)
-
 
                     belief_state_pattern = r"Belief State: (.*)"
                     matches = re.findall(belief_state_pattern, chat_text, re.IGNORECASE)
