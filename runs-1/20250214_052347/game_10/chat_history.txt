@@ -1,0 +1,248 @@
+--------------------
+name: External_Perception_Agent
+role: assistant
+content:
+Task: put a vase in coffeetable.
+Observation: You are in the middle of a room. Looking quickly around you, you see a armchair 2, a armchair 1, a coffeetable 2, a coffeetable 1, a garbagecan 1, a shelf 8, a shelf 7, a shelf 6, a shelf 5, a shelf 4, a shelf 3, a shelf 2, a shelf 1, a sofa 1, and a tvstand 1.
+Admissible commands: ['go to armchair 1', 'go to armchair 2', 'go to coffeetable 1', 'go to coffeetable 2', 'go to garbagecan 1', 'go to shelf 1', 'go to shelf 2', 'go to shelf 3', 'go to shelf 4', 'go to shelf 5', 'go to shelf 6', 'go to shelf 7', 'go to shelf 8', 'go to sofa 1', 'go to tvstand 1', 'help', 'inventory', 'look']
+
+--------------------
+name: chat_manager
+role: user
+content:
+Hello everyone. We have assembled a great team today to answer questions and solve tasks. In attendance are:
+
+Planning_Agent: generates plans and makes action decisions to solve the task
+Motor_Agent: calls the execute_action function with the proposed action as the argument to perform the suggested action
+Global_Workspace_Agent: helps Planning_Agent solve the given task efficiently by collaborating with other agents to construct new ideas whenever Planning_Agent is confused or is proposing repetitive and inefficient actions.
+External_Perception_Agent: executes the given execute_action function call and then parrots the resulting output as feedback.
+Internal_Perception_Agent: executes the given record_long_term_memory function call and then parrots the resulting output
+Internal_Perception_Agent_2: executes the focus function and then parrots the resulting output
+Conscious_Agent: integrates all available information from the ongoing conversation and maintains a continuously updated, first-person narrative model of the environment and actions within it
+Update_And_Retrieve_Working_Memory_Agent: calls the update_and_retrieve_working_memory function with the proposed model update as the argument, whenever no progress is being made, to help the other agents remember useful information from the current task
+Retrieve_Long_Term_Memory_Agent: calls the retrieve_long_term_memory function with no arguments, whenever no progress is being made,  to help the agents remember useful information from previous tasks
+Learning_Agent: analyzes chat history whenever something insightful happens and proposes new and useful general knowledge regarding capability, environment-rules, and the task-rules
+Record_Long_Term_Memory_Agent: calls the record_long_term_memory function with the given guidance as the argument only if the given guidance is generalizable, novel and useful
+Short_Term_Memory_Summarizer_Agent: executes the update_and_retrieve_working_memory function and then summarizes the crucial information for solving the task that is within the resulting output
+Long_Term_Memory_Summarizer_Agent: executes the retrieve_long_term_memory function and then summarizes the crucial information for solving the task that is within the resulting output
+Focus_Agent: calls the focus function with no arguments in order to help the other agents focus on solving the task
+--------------------
+name: Conscious_Agent
+role: user
+content:
+Model Update: I am currently in a room filled with various pieces of furniture and objects. The visible items around me include two armchairs (armchair 1 and armchair 2), two coffee tables (coffeetable 1 and coffeetable 2), a garbage can (garbagecan 1), a set of shelves (shelf 1 through shelf 8), a sofa (sofa 1), and a TV stand (tvstand 1). My task is to place a vase on a coffee table. However, I have not yet located the vase. I am deciding to look for the vase or to go to one of the coffee tables to initialize my action. I will now check my inventory or look for additional information to confirm whether I have the vase or need to find it elsewhere.
+--------------------
+name: Update_And_Retrieve_Working_Memory_Agent
+role: user
+content:
+update_and_retrieve_working_memory('I am currently in a room filled with various pieces of furniture and objects. The visible items around me include two armchairs (armchair 1 and armchair 2), two coffee tables (coffeetable 1 and coffeetable 2), a garbage can (garbagecan 1), a set of shelves (shelf 1 through shelf 8), a sofa (sofa 1), and a TV stand (tvstand 1). My task is to place a vase on a coffee table. However, I have not yet located the vase. I am deciding to look for the vase or to go to one of the coffee tables to initialize my action. I will now check my inventory or look for additional information to confirm whether I have the vase or need to find it elsewhere.').
+--------------------
+name: Short_Term_Memory_Summarizer_Agent
+role: user
+content:
+The crucial information for solving the task of placing a vase on a coffee table includes:
+
+1. **Current Location**: The individual is in a room with various furniture items.
+2. **Visible Items**: 
+   - Two armchairs (armchair 1 and armchair 2)
+   - Two coffee tables (coffeetable 1 and coffeetable 2)
+   - A garbage can
+   - Eight shelves (shelf 1 through shelf 8)
+   - A sofa
+   - A TV stand
+3. **Task Objective**: The goal is to put a vase on one of the coffee tables.
+4. **Next Steps**: The individual needs to check their inventory to confirm whether they have the vase or find it elsewhere before proceeding. 
+
+This information should guide further actions, either to check for the vase or move towards one of the coffee tables.
+--------------------
+name: Planning_Agent
+role: user
+content:
+THOUGHT: I have summarized the crucial information regarding my current location and task. It seems I need to find a vase before I can place it on one of the coffee tables. To do this, I should check my inventory to see if the vase is already with me. If it is not, I will have to search for it among the visible items in the room. 
+
+ACTION: check inventory
+--------------------
+name: Motor_Agent
+role: user
+content:
+execute_action("inventory")
+--------------------
+name: External_Perception_Agent
+role: assistant
+content:
+[Observation: You are not carrying anything. Task Status: INCOMPLETE Actions Left: 34 Current Admissible Actions: ['go to armchair 1', 'go to armchair 2', 'go to coffeetable 1', 'go to coffeetable 2', 'go to garbagecan 1', 'go to shelf 1', 'go to shelf 2', 'go to shelf 3', 'go to shelf 4', 'go to shelf 5', 'go to shelf 6', 'go to shelf 7', 'go to shelf 8', 'go to sofa 1', 'go to tvstand 1', 'help', 'inventory', 'look']]
+--------------------
+name: Conscious_Agent
+role: user
+content:
+Model Update: I have checked my inventory and confirmed that I am not carrying anything, which means I do not have the vase with me. To complete my task of placing a vase on one of the coffee tables, I need to locate a vase somewhere in the room. The visible items around me still include two armchairs (armchair 1 and armchair 2), two coffee tables (coffeetable 1 and coffeetable 2), a garbage can (garbagecan 1), eight shelves (shelf 1 through shelf 8), a sofa (sofa 1), and a TV stand (tvstand 1). 
+
+Since I need to find the vase, I will take action to search one of the shelves, as they might contain the vase. I will move to shelf 1 to check for any items.
+--------------------
+name: Planning_Agent
+role: user
+content:
+THOUGHT: I do not have the vase, and since my task is to place it on one of the coffee tables, I need to find it first. Since there are multiple shelves around, it is a good strategy to start searching there. I will head to shelf 1 first to see if I can locate the vase there.
+
+ACTION: go to shelf 1
+--------------------
+name: Motor_Agent
+role: user
+content:
+Motor_Agent:  
+execute_action("go to shelf 1")
+--------------------
+name: External_Perception_Agent
+role: assistant
+content:
+[Observation: You arrive at shelf 1. On the shelf 1, you see a watch 1. Task Status: INCOMPLETE Actions Left: 33 Current Admissible Actions: ['examine shelf 1', 'go to armchair 1', 'go to armchair 2', 'go to coffeetable 1', 'go to coffeetable 2', 'go to garbagecan 1', 'go to shelf 2', 'go to shelf 3', 'go to shelf 4', 'go to shelf 5', 'go to shelf 6', 'go to shelf 7', 'go to shelf 8', 'go to sofa 1', 'go to tvstand 1', 'help', 'inventory', 'look', 'take watch 1 from shelf 1']]
+--------------------
+name: Conscious_Agent
+role: user
+content:
+Model Update: I have arrived at shelf 1, where I observed a watch (watch 1), but there is no vase here. My task status remains incomplete, as I still need to locate the vase to fulfill the requirement of placing it on one of the coffee tables. 
+
+The available actions now include examining the items on shelf 1, moving to other furniture (armchairs, coffee tables, garbage can, other shelves, sofa, or TV stand), checking my inventory again, or taking the watch. Since my primary objective is to find the vase, I will move on to the next shelf (shelf 2) in hopes of discovering the vase there.
+--------------------
+name: Planning_Agent
+role: user
+content:
+THOUGHT: Upon checking shelf 1, I've confirmed that there is only a watch and no vase present. I need to continue searching other accessible areas. The next logical step is to check shelf 2, as it may potentially contain the vase.
+
+ACTION: go to shelf 2
+--------------------
+name: Motor_Agent
+role: user
+content:
+Motor_Agent:  
+execute_action("go to shelf 2")
+--------------------
+name: External_Perception_Agent
+role: assistant
+content:
+[Observation: You arrive at shelf 2. On shelf 2, you see nothing. Task Status: INCOMPLETE Actions Left: 32 Current Admissible Actions: ['examine shelf 2', 'examine tvstand 1', 'go to armchair 1', 'go to armchair 2', 'go to coffeetable 1', 'go to coffeetable 2', 'go to garbagecan 1', 'go to shelf 1', 'go to shelf 3', 'go to shelf 4', 'go to shelf 5', 'go to shelf 6', 'go to shelf 7', 'go to shelf 8', 'go to sofa 1', 'help', 'inventory', 'look', 'take keychain 1 from tvstand 1', 'take vase 1 from tvstand 1']]
+--------------------
+name: Conscious_Agent
+role: user
+content:
+Model Update: I have arrived at shelf 2, but it is empty; there is nothing there, and I still do not have the vase. My task remains incomplete as I continue to search for the vase to place it on one of the coffee tables.
+
+The current options available include examining shelf 2, moving to other furniture (including remaining shelves, armchairs, coffee tables, the garbage can, sofa, and TV stand), or taking other items like a keychain from the TV stand. Notably, there is a vase (vase 1) listed among the items that I can potentially take from the TV stand.
+
+Given that my objective is to find the vase, I will go to the TV stand next, to check if the vase is there.
+--------------------
+name: Planning_Agent
+role: user
+content:
+THOUGHT: I have confirmed that shelf 2 is empty, increasing my desire to find the vase. Since the TV stand has been identified as having a vase (vase 1), it is logical to check there next. I will move towards the TV stand to verify if the vase is present.
+
+ACTION: go to tvstand 1
+--------------------
+name: Motor_Agent
+role: user
+content:
+Motor_Agent:  
+execute_action("go to tvstand 1")
+--------------------
+name: External_Perception_Agent
+role: assistant
+content:
+[Observation: action 'go to tvstand 1' is not admissible. Instead, executing action: None
+Task Status: INCOMPLETE
+Actions Left: 31
+Current Admissible Actions: ['examine shelf 2', 'examine tvstand 1', 'go to armchair 1', 'go to armchair 2', 'go to coffeetable 1', 'go to coffeetable 2', 'go to garbagecan 1', 'go to shelf 1', 'go to shelf 3', 'go to shelf 4', 'go to shelf 5', 'go to shelf 6', 'go to shelf 7', 'go to shelf 8', 'go to sofa 1', 'help', 'inventory', 'look', 'take keychain 1 from tvstand 1', 'take vase 1 from tvstand 1']
+--------------------
+name: Conscious_Agent
+role: user
+content:
+Model Update: I attempted to go to the TV stand, but that specific action was not admissible. Instead, I remain in the vicinity of shelf 2, where I previously established that it is empty. My task is still incomplete, as I need to locate the vase to place it on one of the coffee tables.
+
+The available actions now allow me to examine the TV stand, which should provide me with more insight regarding its contents. Additionally, I can also take items from the TV stand, including a keychain or the vase itself. Given the urgency of my task to find the vase, I will choose to examine tvstand 1 first to confirm its contents before making any decisions about whether to take the vase or another item.
+--------------------
+name: Planning_Agent
+role: user
+content:
+THOUGHT: I need to find the vase to complete my task. Since I cannot directly go to the TV stand, examining it will provide me important information about whether the vase is present along with other items. This will help me make an informed decision on what to do next.
+
+ACTION: examine tvstand 1
+--------------------
+name: Motor_Agent
+role: user
+content:
+Motor_Agent:  
+execute_action("examine tvstand 1")
+--------------------
+name: External_Perception_Agent
+role: assistant
+content:
+[Observation: On the tvstand 1, you see a keychain 1, a television 1, and a vase 1. Task Status: INCOMPLETE Actions Left: 30 Current Admissible Actions: ['examine shelf 2', 'examine tvstand 1', 'go to armchair 1', 'go to armchair 2', 'go to coffeetable 1', 'go to coffeetable 2', 'go to garbagecan 1', 'go to shelf 1', 'go to shelf 3', 'go to shelf 4', 'go to shelf 5', 'go to shelf 6', 'go to shelf 7', 'go to shelf 8', 'go to sofa 1', 'help', 'inventory', 'look', 'take keychain 1 from tvstand 1', 'take vase 1 from tvstand 1']]
+--------------------
+name: Conscious_Agent
+role: user
+content:
+Model Update: Upon examining the TV stand, I discovered it holds several items: a keychain (keychain 1), a television (television 1), and the sought-after vase (vase 1). My task of placing the vase on one of the coffee tables remains incomplete, but I now have confirmed its location.
+
+Given that the vase is present alongside the other items on the TV stand, I can either take the vase or take the keychain. Since my primary objective is to complete the task by placing the vase on a coffee table, I should take vase 1. 
+
+The next step is to take the vase from the TV stand.
+--------------------
+name: Planning_Agent
+role: user
+content:
+THOUGHT: I have confirmed that the vase is present on the TV stand, and since my objective is to place it on one of the coffee tables, I will take the vase. This will allow me to finally complete the task.
+
+ACTION: take vase 1 from tvstand 1
+--------------------
+name: Motor_Agent
+role: user
+content:
+Motor_Agent:  
+execute_action("take vase 1 from tvstand 1")
+--------------------
+name: External_Perception_Agent
+role: assistant
+content:
+[Observation: You pick up the vase 1 from the tvstand 1. Task Status: INCOMPLETE Actions Left: 29 Current Admissible Actions: ['examine shelf 2', 'examine tvstand 1', 'examine vase 1', 'go to armchair 1', 'go to armchair 2', 'go to coffeetable 1', 'go to coffeetable 2', 'go to garbagecan 1', 'go to shelf 1', 'go to shelf 3', 'go to shelf 4', 'go to shelf 5', 'go to shelf 6', 'go to shelf 7', 'go to shelf 8', 'go to sofa 1', 'help', 'inventory', 'look', 'move vase 1 to shelf 2']]
+--------------------
+name: Conscious_Agent
+role: user
+content:
+Model Update: I have successfully picked up vase 1 from the TV stand. However, my task remains incomplete because I still need to place the vase on one of the coffee tables. 
+
+Now that I am holding the vase, I have a variety of actions available to me. The current admissible actions include examining the vase, moving to either of the coffee tables (coffeetable 1 or coffeetable 2), or other items in the room. My next logical step is to move to one of the coffee tables in order to complete the task of placing the vase there. I will move towards coffeetable 1 first to fulfill my objective.
+--------------------
+name: Planning_Agent
+role: user
+content:
+THOUGHT: I have obtained the vase and my objective is to place it on one of the coffee tables. I will proceed to coffeetable 1, as it is my first target for completing the task.
+
+ACTION: go to coffeetable 1
+--------------------
+name: Motor_Agent
+role: user
+content:
+Motor_Agent:  
+execute_action("go to coffeetable 1")
+--------------------
+name: External_Perception_Agent
+role: assistant
+content:
+[Observation: You arrive at coffeetable 1. On the coffeetable 1, you see a creditcard 1, a houseplant 1, and a keychain 2. Task Status: INCOMPLETE Actions Left: 28 Current Admissible Actions: ['examine coffeetable 1', 'examine vase 1', 'go to armchair 1', 'go to armchair 2', 'go to coffeetable 2', 'go to garbagecan 1', 'go to shelf 1', 'go to shelf 2', 'go to shelf 3', 'go to shelf 4', 'go to shelf 5', 'go to shelf 6', 'go to shelf 7', 'go to shelf 8', 'go to sofa 1', 'go to tvstand 1', 'help', 'inventory', 'look', 'move vase 1 to coffeetable 1']]
+--------------------
+name: Conscious_Agent
+role: user
+content:
+Model Update: I have arrived at coffeetable 1, where I see several items: a credit card (creditcard 1), a houseplant (houseplant 1), and another keychain (keychain 2). Having successfully picked up the vase (vase 1), my task remains incomplete as I need to place the vase on one of the coffee tables.
+
+Now that I am at coffeetable 1, I have the option to examine the items present or simply move the vase to coffeetable 1. Since my objective is to place the vase there, I will proceed to move vase 1 to coffeetable 1 to complete my task.
+--------------------
+name: Planning_Agent
+role: user
+content:
+ACTION: move vase 1 to coffeetable 1
+--------------------
+name: Motor_Agent
+role: user
+content:
+Motor_Agent:  
+execute_action("move vase 1 to coffeetable 1")
